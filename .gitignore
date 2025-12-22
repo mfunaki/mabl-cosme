@@ -1,0 +1,59 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+logs/
+*.pid
+*.seed
+*.pid.lock
+
+# OS junk files
+.DS_Store
+Thumbs.db
+Icon?
+ehthumbs.db
+desktop.ini
+
+# Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Dependencies cache
+pnpm-lock.yaml
+pnpm-store/
+
+# Test coverage output
+coverage/
+
+# Generated static assets
+*.local
+*.cache
+.cache/
+vite.config.ts.timestamp*
+vite.deps.json
+
+# Docker
+docker-compose.override.yml
+.docker/
+*.tar
+
+# Optional: ignore production environment files
+secret.json
