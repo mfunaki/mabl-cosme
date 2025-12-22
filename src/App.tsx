@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import OpenAI from 'openai'
 
 /**
  * mabl-cosme Demo (React)
@@ -84,6 +85,46 @@ const T: Record<Locale, Record<string, string>> = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+// OpenAIクライアントの初期化
+const openai = new OpenAI({
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+  dangerouslyAllowBrowser: true // フロントエンドからの直接呼び出し（本番環境では推奨されません）
+})
+
+async function generateBackgroundWithAI(imageFile: File): Promise<{ status: number; ok: boolean; imageUrl?: string; error?: string }> {
+  try {
+    // 画像をBase64に変換
+    const base64Image = await fileToBase64(imageFile)
+    
+    // OpenAI DALL-E 2の画像編集APIを使用
+    // マスク画像を作成（背景部分を透明にする）
+    const response = await openai.images.edit({
+      image: imageFile,
+      prompt: "professional studio background, soft gradient, clean and minimal aesthetic, high quality",
+      n: 1,
+      size: "1024x1024"
+    })
+
+    if (response.data && response.data[0]?.url) {
+      return { status: 200, ok: true, imageUrl: response.data[0].url }
+    }
+    
+    return { status: 500, ok: false, error: 'No image generated' }
+  } catch (error: any) {
+    console.error('OpenAI API Error:', error)
+    return { status: 500, ok: false, error: error.message || 'API Error' }
+  }
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 async function mockAiGenerate(image: HTMLImageElement) {
   await sleep(800)
   return { status: 200, ok: true, filterApplied: false, width: image.naturalWidth, height: image.naturalHeight, message: 'ok' } as const
@@ -136,14 +177,41 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [imgUrl, setImgUrl] = useState<string | null>(null)
+  const [processedImgUrl, setProcessedImgUrl] = useState<string | null>(null)
   const [aiBusy, setAiBusy] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
   const [lastApi, setLastApi] = useState<any>(null)
   const [colorTemp, setColorTemp] = useState(0)
   const [saturation, setSaturation] = useState(0)
   const [saved, setSaved] = useState<{id:string; dataUrl:string; createdAt:string}[]>([])
   const imgEl = useRef<HTMLImageElement>(null)
+  const originalImgEl = useRef<HTMLImageElement>(null)
 
-  useEffect(() => { if (!file) return setImgUrl(null); const u = URL.createObjectURL(file); setImgUrl(u); return () => URL.revokeObjectURL(u) }, [file])
+  useEffect(() => { 
+    if (!file) {
+      setImgUrl(null)
+      setProcessedImgUrl(null)
+      return
+    }
+    const u = URL.createObjectURL(file)
+    setImgUrl(u)
+    setProcessedImgUrl(null)
+    setColorTemp(0)
+    setSaturation(0)
+    return () => URL.revokeObjectURL(u)
+  }, [file])
+
+  // 色調補正の値が変更されたら実際の画像を生成
+  useEffect(() => {
+    if (!originalImgEl.current || !imgUrl) return
+    
+    const timeoutId = setTimeout(() => {
+      const baked = bakeToCanvas(originalImgEl.current!, colorTemp, saturation)
+      setProcessedImgUrl(baked)
+    }, 100) // デバウンス処理
+
+    return () => clearTimeout(timeoutId)
+  }, [colorTemp, saturation, imgUrl])
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f)
@@ -159,26 +227,53 @@ export default function App() {
   function doLogin() { if (emailRef.current?.value && passRef.current?.value) setLoggedIn(true) }
 
   async function aiGenerate() {
-    if (!imgEl.current) return alert(t.needImage)
+    if (!file || !imgEl.current) return alert(t.needImage)
+    
     setAiBusy(true)
-    const resp = await mockAiGenerate(imgEl.current)
-    setLastApi(resp)
-    await sleep(500)
-    setAiBusy(false)
+    setAiError(null)
+    
+    try {
+      const resp = await generateBackgroundWithAI(file)
+      
+      if (resp.ok && resp.imageUrl) {
+        // 生成された画像を取得してBlob URLに変換
+        const imageBlob = await fetch(resp.imageUrl).then(r => r.blob())
+        const newImageUrl = URL.createObjectURL(imageBlob)
+        
+        // 元の画像URLをクリーンアップ
+        if (imgUrl) URL.revokeObjectURL(imgUrl)
+        
+        setImgUrl(newImageUrl)
+        setProcessedImgUrl(null)
+        setColorTemp(0)
+        setSaturation(0)
+        setLastApi({ ...resp, message: 'AI background generated' })
+      } else {
+        setAiError(resp.error || 'Failed to generate background')
+        setLastApi(resp)
+      }
+    } catch (error: any) {
+      setAiError(error.message || 'Unknown error')
+      setLastApi({ status: 500, ok: false, error: error.message })
+    } finally {
+      setAiBusy(false)
+    }
   }
-  function applyAdjust() { setLastApi((p:any) => ({ ...(p||{}), filterApplied: true, message: 'applied' })) }
+  function applyAdjust() { 
+    setLastApi((p:any) => ({ ...(p||{}), filterApplied: true, message: 'applied' }))
+  }
 
   async function saveToGallery() {
-    if (!imgEl.current) return alert(t.needImage)
-    const baked = bakeToCanvas(imgEl.current, colorTemp, saturation)
-    const resp = await mockSave(baked)
+    if (!processedImgUrl && !imgUrl) return alert(t.needImage)
+    const dataUrl = processedImgUrl || imgUrl!
+    const resp = await mockSave(dataUrl)
     setLastApi(resp)
-    if (resp.ok) setSaved(arr => [{ id: resp.id, dataUrl: baked, createdAt: new Date().toISOString() }, ...arr])
+    if (resp.ok) setSaved(arr => [{ id: resp.id, dataUrl, createdAt: new Date().toISOString() }, ...arr])
   }
   function downloadCurrent() {
-    if (!imgEl.current) return alert(t.needImage)
-    const baked = bakeToCanvas(imgEl.current, colorTemp, saturation)
-    const a = document.createElement('a'); a.href = baked; a.download = `mabl-cosme-demo-${Date.now()}.png`; a.click()
+    if (!processedImgUrl && !imgUrl) return alert(t.needImage)
+    const dataUrl = processedImgUrl || imgUrl!
+    const a = document.createElement('a'); a.href = dataUrl; a.download = `mabl-cosme-demo-${Date.now()}.png`; a.click()
   }
 
   const cssFilter = useMemo(() => makeCssFilter(colorTemp, saturation), [colorTemp, saturation])
@@ -243,15 +338,25 @@ export default function App() {
             {uploadError && <span className="text-red-600 text-sm" data-testid="upload-error">{uploadError}</span>}
           </div>
 
+          {/* 元画像を非表示で保持 */}
+          {imgUrl && (
+            <img ref={originalImgEl} src={imgUrl} alt="original" className="hidden" onLoad={()=>setLastApi({ok:true,message:'image-loaded'})} />
+          )}
+
           <div className="mt-4 grid md:grid-cols-2 gap-6">
             <div className="aspect-square bg-slate-100 rounded-2xl flex items-center justify-center overflow-hidden">
-              {imgUrl ? (
-                <img data-testid="img-preview" ref={imgEl} src={imgUrl} alt="preview" className="object-contain w-full h-full" style={{ filter: cssFilter, transition: 'filter 200ms' }} onLoad={()=>setLastApi({ok:true,message:'image-loaded'})} />
+              {(processedImgUrl || imgUrl) ? (
+                <img data-testid="img-preview" ref={imgEl} src={processedImgUrl || imgUrl!} alt="preview" className="object-contain w-full h-full" />
               ) : (<span className="opacity-50">No image</span>)}
             </div>
 
             <div className="space-y-4">
-              <button data-testid="btn-ai-generate" onClick={aiGenerate} disabled={!imgUrl || aiBusy} className="rounded-xl px-4 py-2 border disabled:opacity-50">{aiBusy ? t.generating : t.aiGenerate}</button>
+              <div>
+                <button data-testid="btn-ai-generate" onClick={aiGenerate} disabled={!imgUrl || aiBusy} className="rounded-xl px-4 py-2 border disabled:opacity-50">
+                  {aiBusy ? t.generating : t.aiGenerate}
+                </button>
+                {aiError && <p className="text-red-600 text-sm mt-2" data-testid="ai-error">{aiError}</p>}
+              </div>
 
               <div className="bg-slate-50 rounded-2xl p-4">
                 <h3 className="font-medium mb-3">{t.adjust}</h3>
