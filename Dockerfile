@@ -1,6 +1,11 @@
 # ---- Build stage ----
 FROM node:20-alpine AS build
 WORKDIR /app
+
+# ビルド引数としてAPIキーを受け取る
+ARG VITE_OPENAI_API_KEY
+ENV VITE_OPENAI_API_KEY=$VITE_OPENAI_API_KEY
+
 COPY package.json package-lock.json* ./
 RUN npm ci || npm install
 COPY . .

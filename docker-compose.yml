@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        VITE_OPENAI_API_KEY: ${VITE_OPENAI_API_KEY}
+    ports:
+      - "8080:80"
+    environment:
+      - NODE_ENV=production

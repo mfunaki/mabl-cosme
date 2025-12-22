@@ -85,19 +85,34 @@ const T: Record<Locale, Record<string, string>> = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-// OpenAIクライアントの初期化
-const openai = new OpenAI({
+// 環境変数でモックモードを切り替え
+const USE_MOCK_AI = !import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.VITE_USE_MOCK_AI === 'true'
+
+// OpenAIクライアントの初期化（APIキーが設定されている場合のみ）
+const openai = import.meta.env.VITE_OPENAI_API_KEY ? new OpenAI({
   apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true // フロントエンドからの直接呼び出し（本番環境では推奨されません）
-})
+  dangerouslyAllowBrowser: true
+}) : null
+
+// 開発環境でAPIキーの存在を確認（デバッグ用）
+if (import.meta.env.DEV) {
+  console.log('API Key exists:', !!import.meta.env.VITE_OPENAI_API_KEY)
+  console.log('Using Mock AI:', USE_MOCK_AI)
+  if (import.meta.env.VITE_OPENAI_API_KEY) {
+    console.log('API Key prefix:', import.meta.env.VITE_OPENAI_API_KEY?.substring(0, 10) + '...')
+  }
+}
 
 async function generateBackgroundWithAI(imageFile: File): Promise<{ status: number; ok: boolean; imageUrl?: string; error?: string }> {
+  // モックモードの場合
+  if (USE_MOCK_AI || !openai) {
+    await sleep(1500)
+    console.log('Using mock AI generation (API key not configured or mock mode enabled)')
+    // 元の画像URLをそのまま返す（実際には変更なし）
+    return { status: 200, ok: true, imageUrl: URL.createObjectURL(imageFile) }
+  }
+
   try {
-    // 画像をBase64に変換
-    const base64Image = await fileToBase64(imageFile)
-    
-    // OpenAI DALL-E 2の画像編集APIを使用
-    // マスク画像を作成（背景部分を透明にする）
     const response = await openai.images.edit({
       image: imageFile,
       prompt: "professional studio background, soft gradient, clean and minimal aesthetic, high quality",
@@ -241,13 +256,16 @@ export default function App() {
         const newImageUrl = URL.createObjectURL(imageBlob)
         
         // 元の画像URLをクリーンアップ
-        if (imgUrl) URL.revokeObjectURL(imgUrl)
+        if (imgUrl && imgUrl !== resp.imageUrl) URL.revokeObjectURL(imgUrl)
         
         setImgUrl(newImageUrl)
         setProcessedImgUrl(null)
         setColorTemp(0)
         setSaturation(0)
-        setLastApi({ ...resp, message: 'AI background generated' })
+        setLastApi({ 
+          ...resp, 
+          message: USE_MOCK_AI ? 'Mock AI generation (no API key)' : 'AI background generated' 
+        })
       } else {
         setAiError(resp.error || 'Failed to generate background')
         setLastApi(resp)
@@ -354,8 +372,14 @@ export default function App() {
               <div>
                 <button data-testid="btn-ai-generate" onClick={aiGenerate} disabled={!imgUrl || aiBusy} className="rounded-xl px-4 py-2 border disabled:opacity-50">
                   {aiBusy ? t.generating : t.aiGenerate}
+                  {USE_MOCK_AI && <span className="text-xs ml-2 opacity-60">(Mock)</span>}
                 </button>
                 {aiError && <p className="text-red-600 text-sm mt-2" data-testid="ai-error">{aiError}</p>}
+                {USE_MOCK_AI && (
+                  <p className="text-amber-600 text-xs mt-1">
+                    ⚠️ OpenAI APIキーが未設定のため、モックモードで動作しています
+                  </p>
+                )}
               </div>
 
               <div className="bg-slate-50 rounded-2xl p-4">
