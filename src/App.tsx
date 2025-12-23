@@ -9,11 +9,11 @@ import OpenAI from 'openai'
  */
 
 const LOCALES = ["ja", "en", "zh"] as const
- type Locale = typeof LOCALES[number]
+type Locale = typeof LOCALES[number]
 
 const T: Record<Locale, Record<string, string>> = {
   ja: {
-    appTitle: "AIビジュアル制作ワークフロー（デモ）",
+    appTitle: "AIビジュアル制作ワークフロー(デモ)",
     env: "環境",
     login: "ログイン",
     logout: "ログアウト",
@@ -34,6 +34,8 @@ const T: Record<Locale, Record<string, string>> = {
     applied: "適用しました",
     saved: "保存しました",
     needImage: "先に画像をアップロードしてください",
+    promptLabel: "背景生成プロンプト",
+    defaultPrompt: "ハワイの海岸の背景",
   },
   en: {
     appTitle: "AI Visual Creation Workflow (Demo)",
@@ -57,9 +59,11 @@ const T: Record<Locale, Record<string, string>> = {
     applied: "Applied",
     saved: "Saved",
     needImage: "Please upload an image first",
+    promptLabel: "Background Generation Prompt",
+    defaultPrompt: "Hawaiian beach background",
   },
   zh: {
-    appTitle: "AI 视觉生成工作流（演示）",
+    appTitle: "AI 视觉生成工作流(演示)",
     env: "环境",
     login: "登录",
     logout: "登出",
@@ -80,6 +84,8 @@ const T: Record<Locale, Record<string, string>> = {
     applied: "已应用",
     saved: "已保存",
     needImage: "请先上传图片",
+    promptLabel: "背景生成提示",
+    defaultPrompt: "夏威夷海滩背景",
   },
 }
 
@@ -103,31 +109,109 @@ if (import.meta.env.DEV) {
   }
 }
 
-async function generateBackgroundWithAI(imageFile: File): Promise<{ status: number; ok: boolean; imageUrl?: string; error?: string }> {
+async function convertToPngSquare(file: File): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')!
+      
+      // 正方形のサイズを決定（1024x1024）
+      const size = 1024
+      canvas.width = size
+      canvas.height = size
+      
+      // 画像を中央に配置してリサイズ
+      const scale = Math.min(size / img.width, size / img.height)
+      const scaledWidth = img.width * scale
+      const scaledHeight = img.height * scale
+      const x = (size - scaledWidth) / 2
+      const y = (size - scaledHeight) / 2
+      
+      // 白背景を設定
+      ctx.fillStyle = 'white'
+      ctx.fillRect(0, 0, size, size)
+      
+      // 画像を描画
+      ctx.drawImage(img, x, y, scaledWidth, scaledHeight)
+      
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const pngFile = new File([blob], 'image.png', { type: 'image/png' })
+          resolve(pngFile)
+        } else {
+          reject(new Error('Failed to convert image'))
+        }
+      }, 'image/png')
+    }
+    img.onerror = reject
+    img.src = URL.createObjectURL(file)
+  })
+}
+
+async function generateBackgroundWithAI(imageFile: File, prompt: string): Promise<{ status: number; ok: boolean; imageUrl?: string; error?: string }> {
   // モックモードの場合
   if (USE_MOCK_AI || !openai) {
     await sleep(1500)
     console.log('Using mock AI generation (API key not configured or mock mode enabled)')
+    console.log('Prompt:', prompt)
     // 元の画像URLをそのまま返す（実際には変更なし）
     return { status: 200, ok: true, imageUrl: URL.createObjectURL(imageFile) }
   }
 
   try {
-    const response = await openai.images.edit({
-      image: imageFile,
-      prompt: "professional studio background, soft gradient, clean and minimal aesthetic, high quality",
+    console.log('Calling OpenAI API to generate background with prompt:', prompt)
+    
+    // プロンプトに背景生成の指示を追加
+    const enhancedPrompt = `Generate a background image that is: ${prompt}. The image should be suitable as a professional background. High quality, detailed.`
+    
+    const response = await openai.images.generate({
+      prompt: enhancedPrompt,
       n: 1,
-      size: "1024x1024"
+      size: "1024x1024",
+      response_format: "b64_json" // Base64形式で取得してCORSを回避
+    })
+    
+    console.log('OpenAI API response received')
+    console.log('Response structure:', {
+      hasData: !!response.data,
+      dataLength: response.data?.length,
+      firstItemKeys: response.data?.[0] ? Object.keys(response.data[0]) : null,
+      hasB64Json: !!response.data?.[0]?.b64_json,
+      b64JsonLength: response.data?.[0]?.b64_json?.length
     })
 
-    if (response.data && response.data[0]?.url) {
-      return { status: 200, ok: true, imageUrl: response.data[0].url }
+    if (response.data && response.data[0]?.b64_json) {
+      // Base64データをData URLに変換
+      const imageUrl = `data:image/png;base64,${response.data[0].b64_json}`
+      console.log('Image URL created, length:', imageUrl.length)
+      return { status: 200, ok: true, imageUrl }
     }
     
     return { status: 500, ok: false, error: 'No image generated' }
   } catch (error: any) {
-    console.error('OpenAI API Error:', error)
-    return { status: 500, ok: false, error: error.message || 'API Error' }
+    console.error('OpenAI API Error Details:', {
+      message: error.message,
+      type: error.type,
+      code: error.code,
+      status: error.status,
+      response: error.response?.data,
+      error: error
+    })
+    
+    // より詳細なエラーメッセージを構築
+    let errorMessage = error.message || 'API Error'
+    if (error.response?.data?.error?.message) {
+      errorMessage = error.response.data.error.message
+    } else if (error.error?.message) {
+      errorMessage = error.error.message
+    }
+    
+    return { 
+      status: error.status || 500, 
+      ok: false, 
+      error: errorMessage
+    }
   }
 }
 
@@ -181,9 +265,71 @@ function bakeToCanvas(img: HTMLImageElement, colorTemp: number, saturation: numb
   return canvas.toDataURL('image/png')
 }
 
+async function composeBackgroundWithImage(backgroundBase64: string, originalFile: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')!
+    
+    // 背景画像を読み込む
+    const bgImg = new Image()
+    bgImg.onload = () => {
+      // キャンバスを背景と同じサイズに設定
+      canvas.width = 1024
+      canvas.height = 1024
+      
+      // 背景を描画
+      ctx.drawImage(bgImg, 0, 0, 1024, 1024)
+      
+      // 元の画像を読み込んで合成
+      const originalImg = new Image()
+      originalImg.onload = () => {
+        // 元の画像を中央に配置してリサイズ
+        const maxW = 1024, maxH = 1024
+        let width = originalImg.width
+        let height = originalImg.height
+        
+        const scale = Math.min(maxW / width, maxH / height)
+        width = Math.floor(width * scale)
+        height = Math.floor(height * scale)
+        
+        const x = (1024 - width) / 2
+        const y = (1024 - height) / 2
+        
+        // 元の画像を背景の上に描画
+        ctx.drawImage(originalImg, x, y, width, height)
+        
+        // 合成画像をBase64に変換
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const reader = new FileReader()
+            reader.onload = () => {
+              resolve(reader.result as string)
+            }
+            reader.readAsDataURL(blob)
+          } else {
+            reject(new Error('Failed to compose images'))
+          }
+        }, 'image/png')
+      }
+      originalImg.onerror = reject
+      originalImg.src = URL.createObjectURL(originalFile)
+    }
+    bgImg.onerror = reject
+    bgImg.src = backgroundBase64
+  })
+}
+
 export default function App() {
   const [locale, setLocale] = useState<Locale>('ja')
   const t = T[locale]
+  
+  const [aiPrompt, setAiPrompt] = useState(t.defaultPrompt)
+
+  // 言語切り替え時にデフォルトプロンプトを更新
+  useEffect(() => {
+    setAiPrompt(T[locale].defaultPrompt)
+  }, [locale])
+
   const [env, setEnv] = useState<'staging'|'production'>('staging')
   const [loggedIn, setLoggedIn] = useState(false)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -248,23 +394,27 @@ export default function App() {
     setAiError(null)
     
     try {
-      const resp = await generateBackgroundWithAI(file)
+      const resp = await generateBackgroundWithAI(file, aiPrompt)
       
       if (resp.ok && resp.imageUrl) {
-        // 生成された画像を取得してBlob URLに変換
-        const imageBlob = await fetch(resp.imageUrl).then(r => r.blob())
-        const newImageUrl = URL.createObjectURL(imageBlob)
+        // 生成された背景と元の画像を合成
+        console.log('Composing background with original image...')
+        const composedImageUrl = await composeBackgroundWithImage(resp.imageUrl, file)
+        console.log('Image composition complete')
         
-        // 元の画像URLをクリーンアップ
-        if (imgUrl && imgUrl !== resp.imageUrl) URL.revokeObjectURL(imgUrl)
+        // 元の画像URLをクリーンアップ（Blob URLの場合のみ）
+        if (imgUrl && imgUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(imgUrl)
+        }
         
-        setImgUrl(newImageUrl)
+        // 合成画像を表示
+        setImgUrl(composedImageUrl)
         setProcessedImgUrl(null)
         setColorTemp(0)
         setSaturation(0)
         setLastApi({ 
           ...resp, 
-          message: USE_MOCK_AI ? 'Mock AI generation (no API key)' : 'AI background generated' 
+          message: USE_MOCK_AI ? 'Mock AI generation (no API key)' : 'AI background generated and composed' 
         })
       } else {
         setAiError(resp.error || 'Failed to generate background')
@@ -370,6 +520,16 @@ export default function App() {
 
             <div className="space-y-4">
               <div>
+                <label className="text-sm block mb-2" htmlFor="ai-prompt">{t.promptLabel}</label>
+                <textarea 
+                  id="ai-prompt"
+                  data-testid="ai-prompt"
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  placeholder={t.defaultPrompt}
+                  className="w-full border rounded-xl px-3 py-2 text-sm mb-3"
+                  rows={2}
+                />
                 <button data-testid="btn-ai-generate" onClick={aiGenerate} disabled={!imgUrl || aiBusy} className="rounded-xl px-4 py-2 border disabled:opacity-50">
                   {aiBusy ? t.generating : t.aiGenerate}
                   {USE_MOCK_AI && <span className="text-xs ml-2 opacity-60">(Mock)</span>}

@@ -4,9 +4,8 @@ services:
   app:
     build:
       context: .
-      args:
-        VITE_OPENAI_API_KEY: ${VITE_OPENAI_API_KEY}
     ports:
       - "8080:80"
     environment:
       - NODE_ENV=production
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
