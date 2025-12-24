@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import OpenAI from 'openai'
+import React, { useEffect, useRef, useState } from 'react'
 
 /**
  * mabl-cosme Demo (React)
- * - Front-end only mock; no backend required
+ * - Backend proxy for OpenAI API
  * - Tailwind classes via CDN
  * - Elements instrumented with data-testid for mabl
  */
@@ -91,142 +90,61 @@ const T: Record<Locale, Record<string, string>> = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-// 環境変数でモックモードを切り替え
-const USE_MOCK_AI = !import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.VITE_USE_MOCK_AI === 'true'
-
-// OpenAIクライアントの初期化（APIキーが設定されている場合のみ）
-const openai = import.meta.env.VITE_OPENAI_API_KEY ? new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true
-}) : null
-
-// 開発環境でAPIキーの存在を確認（デバッグ用）
-if (import.meta.env.DEV) {
-  console.log('API Key exists:', !!import.meta.env.VITE_OPENAI_API_KEY)
-  console.log('Using Mock AI:', USE_MOCK_AI)
-  if (import.meta.env.VITE_OPENAI_API_KEY) {
-    console.log('API Key prefix:', import.meta.env.VITE_OPENAI_API_KEY?.substring(0, 10) + '...')
-  }
-}
-
-async function convertToPngSquare(file: File): Promise<File> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')!
-      
-      // 正方形のサイズを決定（1024x1024）
-      const size = 1024
-      canvas.width = size
-      canvas.height = size
-      
-      // 画像を中央に配置してリサイズ
-      const scale = Math.min(size / img.width, size / img.height)
-      const scaledWidth = img.width * scale
-      const scaledHeight = img.height * scale
-      const x = (size - scaledWidth) / 2
-      const y = (size - scaledHeight) / 2
-      
-      // 白背景を設定
-      ctx.fillStyle = 'white'
-      ctx.fillRect(0, 0, size, size)
-      
-      // 画像を描画
-      ctx.drawImage(img, x, y, scaledWidth, scaledHeight)
-      
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const pngFile = new File([blob], 'image.png', { type: 'image/png' })
-          resolve(pngFile)
-        } else {
-          reject(new Error('Failed to convert image'))
-        }
-      }, 'image/png')
-    }
-    img.onerror = reject
-    img.src = URL.createObjectURL(file)
-  })
-}
-
-async function generateBackgroundWithAI(imageFile: File, prompt: string): Promise<{ status: number; ok: boolean; imageUrl?: string; error?: string }> {
-  // モックモードの場合
-  if (USE_MOCK_AI || !openai) {
-    await sleep(1500)
-    console.log('Using mock AI generation (API key not configured or mock mode enabled)')
-    console.log('Prompt:', prompt)
-    // 元の画像URLをそのまま返す（実際には変更なし）
-    return { status: 200, ok: true, imageUrl: URL.createObjectURL(imageFile) }
-  }
-
+async function generateBackgroundWithAI(prompt: string): Promise<{ status: number; ok: boolean; imageUrl?: string; error?: string }> {
   try {
-    console.log('Calling OpenAI API to generate background with prompt:', prompt)
+    console.log('Calling backend API to generate background with prompt:', prompt)
     
     // プロンプトに背景生成の指示を追加
     const enhancedPrompt = `Generate a background image that is: ${prompt}. The image should be suitable as a professional background. High quality, detailed.`
     
-    const response = await openai.images.generate({
-      prompt: enhancedPrompt,
-      n: 1,
-      size: "1024x1024",
-      response_format: "b64_json" // Base64形式で取得してCORSを回避
+    const response = await fetch('/api/openai', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: "dall-e-3",
+        prompt: enhancedPrompt,
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json"
+      })
     })
     
-    console.log('OpenAI API response received')
-    console.log('Response structure:', {
-      hasData: !!response.data,
-      dataLength: response.data?.length,
-      firstItemKeys: response.data?.[0] ? Object.keys(response.data[0]) : null,
-      hasB64Json: !!response.data?.[0]?.b64_json,
-      b64JsonLength: response.data?.[0]?.b64_json?.length
-    })
+    console.log('Response status:', response.status)
+    console.log('Response ok:', response.ok)
+    
+    // レスポンスの内容をチェック
+    const contentType = response.headers.get('content-type')
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text()
+      console.error('Non-JSON response:', text)
+      throw new Error('Invalid response from server')
+    }
+    
+    const data = await response.json()
+    console.log('Response data received:', { hasData: !!data.data, hasError: !!data.error })
+    
+    if (!response.ok) {
+      const errorMessage = data.error?.message || data.error || 'API request failed'
+      throw new Error(errorMessage)
+    }
 
-    if (response.data && response.data[0]?.b64_json) {
-      // Base64データをData URLに変換
-      const imageUrl = `data:image/png;base64,${response.data[0].b64_json}`
+    if (data.data && data.data[0]?.b64_json) {
+      const imageUrl = `data:image/png;base64,${data.data[0].b64_json}`
       console.log('Image URL created, length:', imageUrl.length)
       return { status: 200, ok: true, imageUrl }
     }
     
     return { status: 500, ok: false, error: 'No image generated' }
   } catch (error: any) {
-    console.error('OpenAI API Error Details:', {
-      message: error.message,
-      type: error.type,
-      code: error.code,
-      status: error.status,
-      response: error.response?.data,
-      error: error
-    })
-    
-    // より詳細なエラーメッセージを構築
-    let errorMessage = error.message || 'API Error'
-    if (error.response?.data?.error?.message) {
-      errorMessage = error.response.data.error.message
-    } else if (error.error?.message) {
-      errorMessage = error.error.message
-    }
-    
+    console.error('Backend API Error:', error)
     return { 
-      status: error.status || 500, 
+      status: 500, 
       ok: false, 
-      error: errorMessage
+      error: error.message || 'API Error'
     }
   }
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-async function mockAiGenerate(image: HTMLImageElement) {
-  await sleep(800)
-  return { status: 200, ok: true, filterApplied: false, width: image.naturalWidth, height: image.naturalHeight, message: 'ok' } as const
 }
 
 async function mockSave(_dataUrl: string) {
@@ -235,14 +153,6 @@ async function mockSave(_dataUrl: string) {
 }
 
 function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)) }
-
-function makeCssFilter(colorTemp: number, saturation: number) {
-  const warmth = (colorTemp + 100) / 200
-  const sepia = (warmth * 0.6).toFixed(3)
-  const brightness = (1 + warmth * 0.1).toFixed(3)
-  const sat = (1 + saturation / 100).toFixed(3)
-  return `sepia(${sepia}) brightness(${brightness}) saturate(${sat})`
-}
 
 function bakeToCanvas(img: HTMLImageElement, colorTemp: number, saturation: number): string {
   const canvas = document.createElement('canvas')
@@ -377,7 +287,8 @@ export default function App() {
   function onDrop(e: React.DragEvent) {
     e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f)
   }
-  function handleFile(f: File) {
+  function handleFile(f: File | null) {
+    if (!f) return
     setUploadError(null)
     const okType = /image\/(png|jpe?g)/.test(f.type)
     const okSize = f.size <= 10 * 1024 * 1024
@@ -385,6 +296,7 @@ export default function App() {
     if (!okSize) return setUploadError('Max 10MB')
     setFile(f)
   }
+  
   function doLogin() { if (emailRef.current?.value && passRef.current?.value) setLoggedIn(true) }
 
   async function aiGenerate() {
@@ -394,27 +306,24 @@ export default function App() {
     setAiError(null)
     
     try {
-      const resp = await generateBackgroundWithAI(file, aiPrompt)
+      const resp = await generateBackgroundWithAI(aiPrompt)
       
       if (resp.ok && resp.imageUrl) {
-        // 生成された背景と元の画像を合成
         console.log('Composing background with original image...')
         const composedImageUrl = await composeBackgroundWithImage(resp.imageUrl, file)
         console.log('Image composition complete')
         
-        // 元の画像URLをクリーンアップ（Blob URLの場合のみ）
         if (imgUrl && imgUrl.startsWith('blob:')) {
           URL.revokeObjectURL(imgUrl)
         }
         
-        // 合成画像を表示
         setImgUrl(composedImageUrl)
         setProcessedImgUrl(null)
         setColorTemp(0)
         setSaturation(0)
         setLastApi({ 
           ...resp, 
-          message: USE_MOCK_AI ? 'Mock AI generation (no API key)' : 'AI background generated and composed' 
+          message: 'AI background generated and composed' 
         })
       } else {
         setAiError(resp.error || 'Failed to generate background')
@@ -427,6 +336,7 @@ export default function App() {
       setAiBusy(false)
     }
   }
+  
   function applyAdjust() { 
     setLastApi((p:any) => ({ ...(p||{}), filterApplied: true, message: 'applied' }))
   }
@@ -443,8 +353,6 @@ export default function App() {
     const dataUrl = processedImgUrl || imgUrl!
     const a = document.createElement('a'); a.href = dataUrl; a.download = `mabl-cosme-demo-${Date.now()}.png`; a.click()
   }
-
-  const cssFilter = useMemo(() => makeCssFilter(colorTemp, saturation), [colorTemp, saturation])
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-6">
@@ -501,7 +409,7 @@ export default function App() {
           <h2 className="text-lg font-medium mb-3">Upload</h2>
           <div onDrop={onDrop} onDragOver={(e)=>e.preventDefault()} className="border-2 border-dashed rounded-2xl p-6 flex flex-col md:flex-row gap-4 items-center justify-center">
             <label className="cursor-pointer border rounded-xl px-4 py-2" htmlFor="file-input" data-testid="btn-upload">{t.upload}</label>
-            <input id="file-input" type="file" className="hidden" accept="image/png,image/jpeg" onChange={(e)=>handleFile(e.target.files?.[0]||null)} />
+            <input id="file-input" type="file" className="hidden" accept="image/png,image/jpeg" onChange={(e)=>handleFile(e.target.files?.[0] ?? null)} />
             <span className="opacity-70 text-sm">{t.orDrop}</span>
             {uploadError && <span className="text-red-600 text-sm" data-testid="upload-error">{uploadError}</span>}
           </div>
@@ -532,14 +440,8 @@ export default function App() {
                 />
                 <button data-testid="btn-ai-generate" onClick={aiGenerate} disabled={!imgUrl || aiBusy} className="rounded-xl px-4 py-2 border disabled:opacity-50">
                   {aiBusy ? t.generating : t.aiGenerate}
-                  {USE_MOCK_AI && <span className="text-xs ml-2 opacity-60">(Mock)</span>}
                 </button>
                 {aiError && <p className="text-red-600 text-sm mt-2" data-testid="ai-error">{aiError}</p>}
-                {USE_MOCK_AI && (
-                  <p className="text-amber-600 text-xs mt-1">
-                    ⚠️ OpenAI APIキーが未設定のため、モックモードで動作しています
-                  </p>
-                )}
               </div>
 
               <div className="bg-slate-50 rounded-2xl p-4">
