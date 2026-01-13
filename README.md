@@ -139,6 +139,13 @@ const response = await fetch('/api/openai', {
      --member="serviceAccount:github-actions@$PROJECT_ID.iam.gserviceaccount.com" \
      --role="roles/iam.serviceAccountUser"
 
+   # サービスアカウントトークン作成者の権限を付与(Workload Identity用)
+   gcloud iam service-accounts add-iam-policy-binding \
+     "github-actions@$PROJECT_ID.iam.gserviceaccount.com" \
+     --project="$PROJECT_ID" \
+     --role="roles/iam.serviceAccountTokenCreator" \
+     --member="serviceAccount:github-actions@$PROJECT_ID.iam.gserviceaccount.com"
+
    # Workload Identity Poolを作成
    gcloud iam workload-identity-pools create "github" \
      --project="$PROJECT_ID" \
