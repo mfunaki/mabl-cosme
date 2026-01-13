@@ -161,13 +161,16 @@ const response = await fetch('/api/openai', {
      --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" \
      --issuer-uri="https://token.actions.githubusercontent.com"
 
+   # プロジェクト番号を取得
+   export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+
    # GitHubリポジトリとサービスアカウントを紐付け
    export REPO="your-github-username/mabl-cosme"
    gcloud iam service-accounts add-iam-policy-binding \
      "github-actions@$PROJECT_ID.iam.gserviceaccount.com" \
      --project="$PROJECT_ID" \
      --role="roles/iam.workloadIdentityUser" \
-     --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/$REPO"
+     --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/$REPO"
    ```
 
 3. **GitHubシークレットの設定**
@@ -193,6 +196,40 @@ const response = await fetch('/api/openai', {
 #### デプロイ後の確認
 
 デプロイが完了すると、Cloud Runのサービス URLがワークフローログに出力されます。
+
+#### トラブルシューティング
+
+**エラー: `Permission 'iam.serviceAccounts.getAccessToken' denied`**
+
+Workload Identityの設定を確認してください:
+
+```bash
+export PROJECT_ID="your-gcp-project-id"
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+export REPO="your-github-username/mabl-cosme"
+
+# 現在のバインディングを確認
+gcloud iam service-accounts get-iam-policy \
+  "github-actions@$PROJECT_ID.iam.gserviceaccount.com"
+
+# バインディングを削除して再設定
+gcloud iam service-accounts remove-iam-policy-binding \
+  "github-actions@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/$REPO"
+
+# 再度バインディングを追加
+gcloud iam service-accounts add-iam-policy-binding \
+  "github-actions@$PROJECT_ID.iam.gserviceaccount.com" \
+  --project="$PROJECT_ID" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/$REPO"
+```
+
+**GitHubシークレットの確認**
+
+- `WIF_PROVIDER`が正しいフォーマットであることを確認: `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github-provider`
+- `PROJECT_NUMBER`は数字のプロジェクト番号（`PROJECT_ID`ではない）を使用
 
 ### ローカル環境でのDockerテスト
 
