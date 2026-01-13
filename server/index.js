@@ -16,6 +16,36 @@ const isProduction = process.env.NODE_ENV === 'production' || existsSync(path.jo
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Basic認証ミドルウェア
+const basicAuthMiddleware = (req, res, next) => {
+  // Basic認証が有効な場合のみ認証チェックを行う
+  const username = process.env.BASIC_AUTH_USERNAME;
+  const password = process.env.BASIC_AUTH_PASSWORD;
+
+  // 環境変数が設定されていない場合は認証をスキップ
+  if (!username || !password) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="mabl-cosme"');
+    return res.status(401).send('Authentication required');
+  }
+
+  const base64Credentials = authHeader.split(' ')[1];
+  const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
+  const [inputUsername, inputPassword] = credentials.split(':');
+
+  if (inputUsername === username && inputPassword === password) {
+    return next();
+  }
+
+  res.setHeader('WWW-Authenticate', 'Basic realm="mabl-cosme"');
+  return res.status(401).send('Invalid credentials');
+};
+
 // リクエストログ
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/')) {
@@ -30,15 +60,17 @@ app.use('/api', apiProxy);
 // Serve static files (本番環境またはビルド後)
 if (isProduction) {
   const distPath = path.join(__dirname, '../dist');
-  
+
   if (existsSync(distPath)) {
+    // Basic認証を適用してから静的ファイルを提供
+    app.use(basicAuthMiddleware);
     app.use(express.static(distPath));
-    
+
     // SPAフォールバック
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
-    
+
     console.log(`Serving static files from: ${distPath}`);
   } else {
     console.error('Error: dist directory not found. Please run "npm run build" first.');
@@ -47,7 +79,7 @@ if (isProduction) {
 } else {
   // 開発環境では API のみ提供
   app.get('/', (req, res) => {
-    res.json({ 
+    res.json({
       message: 'API server running in development mode',
       note: 'Please use Vite dev server (npm run dev) for the frontend'
     });
@@ -57,6 +89,7 @@ if (isProduction) {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Mode: ${isProduction ? 'production' : 'development'}`);
+  console.log(`Basic Auth enabled: ${!!(process.env.BASIC_AUTH_USERNAME && process.env.BASIC_AUTH_PASSWORD)}`);
   console.log(`OpenAI API Key configured: ${!!process.env.OPENAI_API_KEY}`);
   if (process.env.OPENAI_API_KEY) {
     console.log(`API Key prefix: ${process.env.OPENAI_API_KEY.substring(0, 10)}...`);

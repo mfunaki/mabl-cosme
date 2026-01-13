@@ -30,9 +30,9 @@ npm run build
 npm start
 ```
 
-## セキュリティ: OpenAI API キー管理
+## セキュリティ
 
-### 重要: サーバー側でのキー管理
+### OpenAI API キー管理
 
 このアプリケーションでは、OpenAI APIキーをサーバー側で管理します。**フロントエンドに直接キーを含めないでください**。
 
@@ -40,6 +40,29 @@ npm start
 - フロントエンドの環境変数（`VITE_*`）はビルド時にバンドルされ、ブラウザから閲覧可能
 - APIキーが公開されると、不正使用や予期しない課金が発生するリスクあり
 - サーバープロキシ経由でアクセス制御とレート制限を実装可能
+
+### Basic認証
+
+アプリケーション全体をBasic認証で保護できます。環境変数で有効化します。
+
+#### 設定方法
+
+**ローカル環境**:
+`.env` ファイルに以下を追加:
+```bash
+BASIC_AUTH_USERNAME=admin
+BASIC_AUTH_PASSWORD=your-secure-password
+```
+
+**Cloud Run**:
+環境変数として設定（GitHub Actionsで自動設定）:
+- `BASIC_AUTH_USERNAME`: ユーザー名
+- `BASIC_AUTH_PASSWORD`: パスワード
+
+#### 動作
+- 環境変数が設定されている場合、すべてのページへのアクセス時にBasic認証を要求
+- 環境変数が未設定の場合、認証なしでアクセス可能
+- API エンドポイント（`/api/*`）も保護対象に含まれる
 
 ### 環境変数の設定
 
@@ -181,6 +204,8 @@ const response = await fetch('/api/openai', {
    - `WIF_PROVIDER`: `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider`
    - `WIF_SERVICE_ACCOUNT`: `github-actions@PROJECT_ID.iam.gserviceaccount.com`
    - `OPENAI_API_KEY`: OpenAI APIキー
+   - `BASIC_AUTH_USERNAME`: Basic認証のユーザー名（例: `admin`）
+   - `BASIC_AUTH_PASSWORD`: Basic認証のパスワード（強力なパスワードを設定）
 
    注: `PROJECT_NUMBER` は数字のプロジェクト番号です（例: `852080299306`）
 

@@ -53,6 +53,8 @@ jobs:
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
             --set-env-vars "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
+            --set-env-vars "BASIC_AUTH_USERNAME=${{ secrets.BASIC_AUTH_USERNAME }}" \
+            --set-env-vars "BASIC_AUTH_PASSWORD=${{ secrets.BASIC_AUTH_PASSWORD }}" \
             --set-env-vars "NODE_ENV=production" \
             --port 3000 \
             --memory 512Mi \
