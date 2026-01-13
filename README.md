@@ -113,7 +113,7 @@ const response = await fetch('/api/openai', {
      --project=$PROJECT_ID
 
    # Artifact Registryリポジトリを作成
-   gcloud artifacts repositories create mabl-cosme \
+   gcloud artifacts repositories create mabl-cosme-repo \
      --repository-format=docker \
      --location=asia-northeast1 \
      --project=$PROJECT_ID
