@@ -10,6 +10,12 @@ import React, { useEffect, useRef, useState } from 'react'
 const LOCALES = ["ja", "en", "zh"] as const
 type Locale = typeof LOCALES[number]
 
+const API_SERVERS = [
+  { id: 'same', url: '', label: 'sameHost' },
+  { id: 'cloud', url: 'https://mabl-cosme-api-ixi7x7b23a-an.a.run.app', label: 'cloudServer' },
+] as const
+type ApiServerId = typeof API_SERVERS[number]['id']
+
 const T: Record<Locale, Record<string, string>> = {
   ja: {
     appTitle: "AIビジュアル制作ワークフロー(デモ)",
@@ -35,6 +41,9 @@ const T: Record<Locale, Record<string, string>> = {
     needImage: "先に画像をアップロードしてください",
     promptLabel: "背景生成プロンプト",
     defaultPrompt: "ハワイの海岸の背景",
+    apiServer: "APIサーバー",
+    sameHost: "同一ホスト",
+    cloudServer: "別ホスト",
   },
   en: {
     appTitle: "AI Visual Creation Workflow (Demo)",
@@ -60,6 +69,9 @@ const T: Record<Locale, Record<string, string>> = {
     needImage: "Please upload an image first",
     promptLabel: "Background Generation Prompt",
     defaultPrompt: "Hawaiian beach background",
+    apiServer: "API Server",
+    sameHost: "Same Host",
+    cloudServer: "Different Host",
   },
   zh: {
     appTitle: "AI 视觉生成工作流(演示)",
@@ -85,19 +97,23 @@ const T: Record<Locale, Record<string, string>> = {
     needImage: "请先上传图片",
     promptLabel: "背景生成提示",
     defaultPrompt: "夏威夷海滩背景",
+    apiServer: "API服务器",
+    sameHost: "同一主机",
+    cloudServer: "其他主机",
   },
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-async function generateBackgroundWithAI(prompt: string): Promise<{ status: number; ok: boolean; imageUrl?: string; error?: string }> {
+async function generateBackgroundWithAI(prompt: string, apiBaseUrl: string): Promise<{ status: number; ok: boolean; imageUrl?: string; error?: string }> {
   try {
     console.log('Calling backend API to generate background with prompt:', prompt)
-    
+    console.log('API Base URL:', apiBaseUrl || '(same host)')
+
     // プロンプトに背景生成の指示を追加
     const enhancedPrompt = `Generate a background image that is: ${prompt}. The image should be suitable as a professional background. High quality, detailed.`
-    
-    const response = await fetch('/api/openai', {
+
+    const response = await fetch(`${apiBaseUrl}/api/openai`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -241,6 +257,7 @@ export default function App() {
   }, [locale])
 
   const [env, setEnv] = useState<'staging'|'production'>('staging')
+  const [apiServerId, setApiServerId] = useState<ApiServerId>('same')
   const [loggedIn, setLoggedIn] = useState(false)
   const emailRef = useRef<HTMLInputElement>(null)
   const passRef = useRef<HTMLInputElement>(null)
@@ -306,7 +323,8 @@ export default function App() {
     setAiError(null)
     
     try {
-      const resp = await generateBackgroundWithAI(aiPrompt)
+      const apiServer = API_SERVERS.find(s => s.id === apiServerId)
+      const resp = await generateBackgroundWithAI(aiPrompt, apiServer?.url || '')
       
       if (resp.ok && resp.imageUrl) {
         console.log('Composing background with original image...')
@@ -374,6 +392,12 @@ export default function App() {
               <label className="text-sm" htmlFor="lang-select">{t.language}</label>
               <select id="lang-select" data-testid="lang-select" className="border rounded-xl px-3 py-2" value={locale} onChange={(e) => setLocale(e.target.value as Locale)}>
                 {LOCALES.map(lc => <option key={lc} value={lc}>{lc.toUpperCase()}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm" htmlFor="api-server-select">{t.apiServer}</label>
+              <select id="api-server-select" data-testid="api-server-select" className="border rounded-xl px-3 py-2" value={apiServerId} onChange={(e) => setApiServerId(e.target.value as ApiServerId)}>
+                {API_SERVERS.map(server => <option key={server.id} value={server.id}>{t[server.label]}</option>)}
               </select>
             </div>
           </div>
