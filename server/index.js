@@ -50,7 +50,7 @@ const basicAuthMiddleware = (req, res, next) => {
 // TODO: 本番環境にデプロイする前に削除してください
 app.use((req, res, next) => {
   const authHeader = req.headers['authorization'];
-  console.log(`[DEBUG_AUTH] URL: ${req.url}, Authorization: ${authHeader || 'None'}`);
+  console.log(`[DEBUG_AUTH] URL: ${req.url}, Authorization: ${authHeader ? authHeader : '(header not present)'}`);
   next();
 });
 
