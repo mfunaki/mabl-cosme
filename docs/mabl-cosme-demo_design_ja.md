@@ -4,12 +4,14 @@
 
 - プロジェクト名: **mabl-cosme**
 - リポジトリ: **mabl-cosme**
-- 想定ドメイン: ローカル実行 (`http://localhost:5173` - Vite dev / `http://localhost:4173` - preview) または Docker (`http://localhost:80`)
+- 想定ドメイン: ローカル実行 (`http://localhost:5173` - Vite dev / `http://localhost:3000` - API server) または Docker (`http://localhost:8080`)
 - 技術スタック（実装済み）:
-  - フロントエンド: React 18.3.1 + TypeScript 5.5.4 + Vite 5.4.0
+  - フロントエンド: React 18.2.0 + TypeScript 5.2.2 + Vite 5.2.0
   - スタイル: Tailwind CSS 3.x（CDN読み込み）
-  - ビルド: Vite ([@vitejs/plugin-react](https://www.npmjs.com/package/@vitejs/plugin-react) 5.1.2)
-  - デプロイ: Docker (NGINX 1.27-alpine)
+  - ビルド: Vite ([@vitejs/plugin-react](https://www.npmjs.com/package/@vitejs/plugin-react) 4.2.1)
+  - バックエンド: Node.js 20 + Express 4.18.2
+  - AI統合: OpenAI DALL-E 3（APIプロキシ経由）
+  - デプロイ: Docker (Node.js 18-slim) + Google Cloud Run
 - 用途:
   - 生成AI系コスメ/ビジュアルSaaSを模した **E2Eテストデモ用アプリ**
   - mabl + LLM による「UIコード生成」「自動テスト生成」のサンプル題材
@@ -18,16 +20,18 @@
 
 ## 1. 概要
 
-mabl-cosme-demo は、以下の一連のワークフローを **フロントエンドのみで疑似再現** するデモアプリである。
+mabl-cosme-demo は、以下の一連のワークフローを再現するデモアプリである。
 
 1. ログイン（モック）
 2. 画像アップロード（製品写真などを想定）
-3. 「AI背景生成」（モックAPI呼び出し）
-4. 色調補正（色温度 / 彩度）
-5. 画像の保存・ダウンロード
-6. ギャラリー表示
-7. 多言語対応（日本語 / 英語 / 中国語）
-8. 環境切替（staging / production）表示
+3. 「AI背景生成」（**実際のDALL-E 3 API呼び出し**）
+4. 背景画像と元画像の合成
+5. 色調補正（色温度 / 彩度）
+6. 画像の保存・ダウンロード
+7. ギャラリー表示
+8. 多言語対応（日本語 / 英語 / 中国語）
+9. 環境切替（staging / production）表示
+10. APIサーバー切替（同一ホスト / 別ホスト）
 
 **目的**:
 - LLM が仕様を読み取り、UIコード・状態管理・テストコード（mablテストステップ）を自動生成しやすい構成にする。
@@ -43,7 +47,7 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
 
 - テストで確認したい項目:
   - 典型的な SaaS ワークフロー: ログイン → アップロード → 処理 → 保存
-  - AI 生成結果自体ではなく、「処理が成功したことを示す UI / JSON 状態」を検証
+  - AI 生成結果（DALL-E 3による実際の背景生成と合成）
   - 多言語 UI と環境切り替え
   - data-testid を使った安定したセレクタ設計
 
@@ -67,26 +71,30 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
     - `JA` / `EN` / `ZH`
     - `data-testid="lang-select"`
     - `id="lang-select"`
+  - APIサーバーセレクトボックス
+    - `同一ホスト` / `別ホスト`
+    - `data-testid="api-server-select"`
+    - `id="api-server-select"`
 
 ### 3.2 Auth セクション
 
 - セクションタイトル: "Auth" (固定・英語)
 - ログインフォーム（モック認証）
-  - メールアドレス入力: 
+  - メールアドレス入力:
     - `data-testid="email"`
     - `ref` を使用（emailRef）
     - placeholder: "user@example.com"
-  - パスワード入力: 
+  - パスワード入力:
     - `data-testid="password"`
     - `ref` を使用（passRef）
     - `type="password"`
     - placeholder: "••••••••"
-  - ログインボタン: 
+  - ログインボタン:
     - `data-testid="btn-login"`
-  - ログイン後状態表示: 
+  - ログイン後状態表示:
     - `data-testid="login-state"`
     - テキスト: "Logged in" (固定・英語、緑色のテキストで表示)
-  - ログアウトボタン: 
+  - ログアウトボタン:
     - `data-testid="btn-logout"`
     - ログイン時のみ表示
 
@@ -114,16 +122,25 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
    - アップロード済み画像:
      - `data-testid="img-preview"`
      - `ref={imgEl}` を使用（HTMLImageElement）
-     - `style={{ filter: cssFilter, transition: 'filter 200ms' }}` で色調補正をリアルタイム反映
+     - 色調補正はCanvas APIで実際にピクセル操作して反映
      - `onLoad` イベントで `lastApi` に `{ok:true, message:'image-loaded'}` を設定
    - 未アップロード時: 「No image」テキスト表示（opacity-50）
 
-3. **AI 背景生成ボタン**
+3. **AI 背景生成**
+   - プロンプト入力欄:
+     - `data-testid="ai-prompt"`
+     - `id="ai-prompt"`
+     - textarea形式、2行
+     - デフォルト値: 言語に応じたプロンプト（例：「ハワイの海岸の背景」）
    - ボタン: `data-testid="btn-ai-generate"`
+   - エラー表示:
+     - `data-testid="ai-error"`（エラー時のみ、赤色テキストで表示）
    - 動作:
      - 画像未アップロード時: ブラウザアラート表示（t.needImage）
-     - 画像あり: 疑似API `mockAiGenerate` を呼び出し（800ms sleep）、結果を `lastApi` ステートに格納
-     - 実際の画像ピクセルは変更しない（**UIのためのモック処理**）
+     - 画像あり:
+       - バックエンドAPI（`/api/openai`）経由でDALL-E 3を呼び出し
+       - 生成された背景画像と元画像をCanvas APIで合成
+       - 合成結果をプレビューに表示
    - 生成中は「生成中...」/ "Generating..." 表示 & ボタン `disabled`
    - `disabled={!imgUrl || aiBusy}` により、画像がない場合やビジー中は非活性
 
@@ -143,21 +160,21 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
    - 適用ボタン:
      - `data-testid="btn-apply"`
      - 押下で `lastApi.filterApplied = true` / `message = "applied"` に更新
-   - 実際の表示: CSS filter（`sepia`, `brightness`, `saturate`）で視覚的変化を表現
-     - makeCssFilter関数で計算: `sepia(${sepia}) brightness(${brightness}) saturate(${sat})`
-     - リアルタイムにプレビュー画像に反映（transition: 200ms）
+   - 実際の表示: Canvas APIで実際のピクセル操作（bakeToCanvas関数）
+     - 色温度: 暖色系のオーバーレイ (rgba(255,200,100))
+     - 彩度: 白または黒のオーバーレイで調整
+     - スライダー変更時にデバウンス処理（100ms）で反映
 
 5. **保存・ダウンロード操作**
    - 保存ボタン: `data-testid="btn-save"`
      - 画像未アップロード時: ブラウザアラート表示（t.needImage）
-     - 現在の画像＋フィルタを `bakeToCanvas` 関数で `<canvas>` に焼き込み
-     - 最大サイズ: 1280x1280（アスペクト比維持でスケーリング）
+     - 現在の画像（processedImgUrl または imgUrl）を保存
      - `mockSave` で疑似API呼び出し（300ms sleep）
      - 成功時、ギャラリーに1件追加（配列の先頭に挿入）
      - 戻り値の例: `{ status: 200, ok: true, id: <ランダムID> }`
    - ダウンロードボタン: `data-testid="btn-download"`
      - 画像未アップロード時: ブラウザアラート表示（t.needImage）
-     - `bakeToCanvas` で生成した PNG をクライアント側でダウンロード
+     - 現在の画像をPNGとしてダウンロード
      - ファイル名: `mabl-cosme-demo-<timestamp>.png`
      - `<a>` 要素を動的に作成してクリック
 
@@ -170,7 +187,7 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
    - mabl から JSON文字列として部分一致/キー値検証を行う用途
    - 表示される値の例:
      - 画像読み込み時: `{ok: true, message: 'image-loaded'}`
-     - AI生成後: `{status: 200, ok: true, filterApplied: false, width: <幅>, height: <高さ>, message: 'ok'}`
+     - AI生成後: `{status: 200, ok: true, imageUrl: '...', message: 'AI background generated and composed'}`
      - 適用後: `filterApplied: true`, `message: 'applied'`
      - 保存後: `{status: 200, ok: true, id: <ランダムID>}`
 
@@ -206,20 +223,23 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
 2. 環境を確認（デフォルト: `staging`）
 3. メールアドレス・パスワード入力 → ログイン
 4. 画像をアップロード（またはドラッグ）
-5. 「背景をAIで生成」ボタン押下
-   - 疑似API成功
+5. 背景生成プロンプトを入力（またはデフォルト使用）
+6. 「背景をAIで生成」ボタン押下
+   - DALL-E 3で背景生成
+   - 元画像と合成
    - `api-payload` に `status: 200, ok: true` 表示
-6. 色温度・彩度スライダーで調整
-7. 「適用」ボタン押下 → `filterApplied: true` となる
-8. 「保存」ボタン押下 → ギャラリーに1件追加される
-9. 「ダウンロード」でPNGを保存
+7. 色温度・彩度スライダーで調整（リアルタイム反映）
+8. 「適用」ボタン押下 → `filterApplied: true` となる
+9. 「保存」ボタン押下 → ギャラリーに1件追加される
+10. 「ダウンロード」でPNGを保存
 
 ### シナリオ B: 多言語確認
 
 1. シナリオAの途中or完了後
 2. 言語セレクトを `EN` に変更
 3. ボタン/ラベルが英語表示に変わることを確認
-4. `ZH` に変更し、中国語文言を確認
+4. AIプロンプトのデフォルト値も言語に応じて変更される
+5. `ZH` に変更し、中国語文言を確認
 
 ### シナリオ C: 入力エラー
 
@@ -232,6 +252,12 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
 1. ログインはするが画像アップロードを行わない
 2. 「背景をAIで生成」 or 「保存」 or 「ダウンロード」を押下
 3. 「先に画像をアップロードしてください」アラート
+
+### シナリオ E: APIサーバー切替
+
+1. APIサーバーセレクトで「同一ホスト」または「別ホスト」を選択
+2. 「背景をAIで生成」ボタン押下
+3. 選択したサーバーにAPI呼び出しが行われることを確認
 
 ---
 
@@ -272,41 +298,49 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
   - `onDrop` イベントで `e.dataTransfer.files?.[0]` を取得
   - `onDragOver` で `e.preventDefault()` を呼び出し
 
-### 5.4 AI背景生成（モックAPI）
+### 5.4 AI背景生成（DALL-E 3 API）
 
 - `btn-ai-generate` クリック時の条件:
-  - 画像が読み込まれていない場合 (`!imgEl.current`) → ブラウザアラート表示（t.needImage）
+  - 画像が読み込まれていない場合 (`!file || !imgEl.current`) → ブラウザアラート表示（t.needImage）
   - 読み込まれている場合:
     - `aiBusy = true`（ボタンテキストが「生成中...」に変更）
-    - `mockAiGenerate(imageElement)` を非同期呼び出し（800ms sleep）
-    - 戻り値を `lastApi` に格納
-    - UI上は特に画像変化不要（実際の画像は変更しない）
-    - 500ms 追加で sleep してから `aiBusy = false` に戻す
+    - `generateBackgroundWithAI(aiPrompt, apiBaseUrl)` を非同期呼び出し
+    - 成功時: `composeBackgroundWithImage` で背景と元画像を合成
+    - 合成結果を `imgUrl` に設定
+    - 失敗時: `aiError` にエラーメッセージを設定
+    - 結果を `lastApi` に格納
+    - `aiBusy = false` に戻す
 
-- `mockAiGenerate` 戻り値例:
-  ```json
-  {
-    "status": 200,
-    "ok": true,
-    "filterApplied": false,
-    "width": <画像のnaturalWidth>,
-    "height": <画像のnaturalHeight>,
-    "message": "ok"
+- `generateBackgroundWithAI` 関数の実装:
+  ```typescript
+  async function generateBackgroundWithAI(prompt: string, apiBaseUrl: string) {
+    const enhancedPrompt = `Generate a background image that is: ${prompt}. The image should be suitable as a professional background. High quality, detailed.`
+
+    const response = await fetch(`${apiBaseUrl}/api/openai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: "dall-e-3",
+        prompt: enhancedPrompt,
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json"
+      })
+    })
+
+    // レスポンス処理...
+    return { status: 200, ok: true, imageUrl: `data:image/png;base64,${data.data[0].b64_json}` }
   }
   ```
 
-- `mockAiGenerate` 関数の実装:
+- `composeBackgroundWithImage` 関数の実装:
   ```typescript
-  async function mockAiGenerate(image: HTMLImageElement) {
-    await sleep(800)
-    return { 
-      status: 200, 
-      ok: true, 
-      filterApplied: false, 
-      width: image.naturalWidth, 
-      height: image.naturalHeight, 
-      message: 'ok' 
-    } as const
+  async function composeBackgroundWithImage(backgroundBase64: string, originalFile: File): Promise<string> {
+    // Canvasを作成（1024x1024）
+    // 背景を描画
+    // 元画像を中央に配置してリサイズ
+    // 元画像を背景の上に描画
+    // 合成画像をBase64に変換して返す
   }
   ```
 
@@ -317,26 +351,12 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
   - 範囲: -100 〜 100
   - `clamp` 関数で範囲外の値を制限
 
-- CSS フィルター生成（`makeCssFilter` 関数）:
-  ```typescript
-  function makeCssFilter(colorTemp: number, saturation: number) {
-    const warmth = (colorTemp + 100) / 200
-    const sepia = (warmth * 0.6).toFixed(3)
-    const brightness = (1 + warmth * 0.1).toFixed(3)
-    const sat = (1 + saturation / 100).toFixed(3)
-    return `sepia(${sepia}) brightness(${brightness}) saturate(${sat})`
-  }
-  ```
-  - `useMemo` でメモ化し、不要な再計算を防ぐ
-  - リアルタイムでプレビュー画像の `style.filter` に適用
+- 色調補正の反映:
+  - スライダー変更時にデバウンス処理（100ms）を適用
+  - `bakeToCanvas` 関数でCanvas APIを使用して実際にピクセル操作
+  - 結果を `processedImgUrl` に設定
 
-- 適用ボタン (`btn-apply`) 押下時:
-  - `lastApi` に `filterApplied: true`, `message: 'applied'` を設定
-  - 実際の画像データは変更しない（UIフィードバックのみ）
-
-### 5.6 画像の焼き込みと保存
-
-- Canvas への焼き込み（`bakeToCanvas` 関数）:
+- `bakeToCanvas` 関数（Canvas APIでピクセル操作）:
   ```typescript
   function bakeToCanvas(img: HTMLImageElement, colorTemp: number, saturation: number): string {
     const canvas = document.createElement('canvas')
@@ -350,28 +370,29 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
     canvas.height = height
     ctx.drawImage(img, 0, 0, width, height)
     const warmth = (colorTemp + 100) / 200
-    if (warmth > 0) { 
+    if (warmth > 0) {
       ctx.fillStyle = `rgba(255,200,100,${0.08 * warmth})`
-      ctx.fillRect(0,0,width,height) 
+      ctx.fillRect(0,0,width,height)
     }
     if (saturation !== 0) {
       const mag = Math.abs(saturation) / 100
-      ctx.fillStyle = saturation > 0 
-        ? `rgba(255,255,255,${0.05 * mag})` 
+      ctx.fillStyle = saturation > 0
+        ? `rgba(255,255,255,${0.05 * mag})`
         : `rgba(0,0,0,${0.05 * mag})`
       ctx.fillRect(0,0,width,height)
     }
     return canvas.toDataURL('image/png')
   }
   ```
-  - 最大サイズ 1280x1280 でリサイズ（アスペクト比維持）
-  - 色温度: 暖色系のオーバーレイ (rgba(255,200,100))
-  - 彩度: 白または黒のオーバーレイで調整
-  - PNG 形式で Data URL として返す
+
+- 適用ボタン (`btn-apply`) 押下時:
+  - `lastApi` に `filterApplied: true`, `message: 'applied'` を設定
+
+### 5.6 画像の保存
 
 - 保存処理 (`saveToGallery` 関数):
   - 画像がない場合: アラート表示
-  - `bakeToCanvas` でフィルタを焼き込んだ画像を生成
+  - `processedImgUrl` または `imgUrl` を使用
   - `mockSave` を呼び出し（300ms sleep）
   - 成功時:
     - `saved` 配列の先頭に追加
@@ -382,10 +403,10 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
   ```typescript
   async function mockSave(_dataUrl: string) {
     await sleep(300)
-    return { 
-      status: 200, 
-      ok: true, 
-      id: Math.random().toString(36).slice(2) 
+    return {
+      status: 200,
+      ok: true,
+      id: Math.random().toString(36).slice(2)
     } as const
   }
   ```
@@ -394,7 +415,7 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
 
 - `downloadCurrent` 関数:
   - 画像がない場合: アラート表示
-  - `bakeToCanvas` でフィルタを焼き込んだ画像を生成
+  - `processedImgUrl` または `imgUrl` を使用
   - `<a>` 要素を動的に生成し、`href` に Data URL を設定
   - `download` 属性にファイル名を設定: `mabl-cosme-demo-<timestamp>.png`
   - プログラム的に `click()` を実行してダウンロード開始
@@ -423,9 +444,11 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
   - upload, orDrop, aiGenerate, adjust, colorTemp, saturation
   - apply, save, download, gallery, language
   - generating, applied, saved, needImage
+  - promptLabel, defaultPrompt, apiServer, sameHost, cloudServer
 
 - `locale` ステートで現在の言語を管理
 - 言語切替時: `setLocale` で即座に UI を更新
+- 言語切替時: `aiPrompt` のデフォルト値も更新
 - data-testid は言語に依存しない固定文字列を使用
 
 ### 5.10 環境切替
@@ -437,6 +460,15 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
   - `app.mabl-cosme.com`
 - 実際の API 呼び出しやルーティングは行わない（UI 表示のみ）
 
+### 5.11 APIサーバー切替
+
+- `apiServerId` ステート: `'same' | 'cloud'`
+- 初期値: `'same'`
+- セレクトボックスで切替可能:
+  - `同一ホスト` / `Same Host`: API呼び出し先が同一ホスト
+  - `別ホスト` / `Different Host`: Cloud Run上の別ホスト（`https://mabl-cosme-api-ixi7x7b23a-an.a.run.app`）
+- AI背景生成時に選択したサーバーにリクエストを送信
+
 ---
 
 ## 6. 実装の詳細
@@ -445,67 +477,112 @@ mabl-cosme-demo は、以下の一連のワークフローを **フロントエ�
 
 ```
 /
-├── Dockerfile              # Node.js ビルド + NGINX デプロイ
+├── Dockerfile              # Node.js ビルド + Node.js 本番サーバー
+├── docker-compose.yml      # ローカル Docker 設定
 ├── index.html              # Vite エントリーポイント、Tailwind CDN 読み込み
 ├── package.json            # 依存関係とスクリプト
 ├── tsconfig.json           # TypeScript コンパイラ設定
-├── vite.config.ts          # Vite 設定（React プラグイン）
+├── vite.config.ts          # Vite 設定（React プラグイン + API プロキシ）
+├── .env.example            # 環境変数テンプレート
+├── .github/
+│   └── workflows/
+│       └── deploy.yml      # Cloud Run デプロイ設定
 ├── docs/
 │   └── mabl-cosme-demo_design_ja.md  # 設計ドキュメント（本ファイル）
+├── server/
+│   ├── index.js            # Express サーバー
+│   └── proxy.js            # OpenAI API プロキシ
 └── src/
     ├── App.tsx             # メインアプリケーションコンポーネント
-    └── main.tsx            # React エントリーポイント
+    ├── main.tsx            # React エントリーポイント
+    ├── contexts/           # React Context（多言語用、未使用）
+    └── i18n/               # 翻訳ファイル（テンプレート）
 ```
 
 ### 6.2 主要な依存関係
 
-- React: 18.3.1
-- React DOM: 18.3.1
-- TypeScript: 5.5.4
-- Vite: 5.4.0
-- @vitejs/plugin-react: 5.1.2
+- React: 18.2.0
+- React DOM: 18.2.0
+- TypeScript: 5.2.2
+- Vite: 5.2.0
+- @vitejs/plugin-react: 4.2.1
+- Express: 4.18.2
+- OpenAI SDK: 4.77.3
 - Tailwind CSS: 3.x（CDN）
+- concurrently: 8.2.2（開発時）
 
 ### 6.3 開発・ビルドコマンド
 
 ```bash
-# 開発サーバー起動（デフォルト: http://localhost:5173）
+# 開発サーバー起動（フロント＋バック同時）
+npm run dev:all
+
+# フロントエンド開発サーバー起動（http://localhost:5173）
 npm run dev
+
+# バックエンドAPIサーバー起動（http://localhost:3000）
+npm run dev:server
 
 # プロダクションビルド
 npm run build
 
-# ビルド結果のプレビュー（http://localhost:4173）
+# ビルド結果のプレビュー実行
 npm run preview
+
+# ESLint実行
+npm run lint
 ```
 
 ### 6.4 Docker デプロイ
 
 ```bash
-# イメージビルド
-docker build -t mabl-cosme-demo .
+# Docker Compose でローカル実行（ポート 8080）
+docker compose up --build
 
-# コンテナ実行（ポート 80）
-docker run -p 80:80 mabl-cosme-demo
+# イメージビルド
+docker build -t mabl-cosme .
+
+# コンテナ実行（ポート 3000）
+docker run -p 8080:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY mabl-cosme
 ```
 
 - ビルドステージ: Node.js 20-alpine で npm ビルド
-- 実行ステージ: NGINX 1.27-alpine で静的ファイル配信
-- ビルド成果物: `/app/dist` → `/usr/share/nginx/html`
+- 実行ステージ: Node.js 18-slim でExpressサーバー実行
+- ビルド成果物: `/app/dist` + `/app/server`
+- ポート: 3000
 
-### 6.5 重要な React フック使用例
+### 6.5 バックエンドサーバー
 
-- `useState`: 各種ステート管理（locale, env, loggedIn, file, uploadError, etc.）
-- `useRef`: DOM 参照（emailRef, passRef, imgEl）
-- `useEffect`: file 変更時の URL 生成とクリーンアップ
-- `useMemo`: cssFilter のメモ化（colorTemp, saturation 依存）
+- **Express アプリケーション**
+  - JSONボディパーサー: 最大10MB対応
+  - Basic認証ミドルウェア（環境変数で有効化）
+  - APIプロキシ: `/api/openai` → OpenAI API
+  - 本番モード: 静的ファイル配信 + SPA フォールバック
+  - 開発モード: API のみ提供
 
-### 6.6 ヘルパー関数
+- **環境変数**
+  ```bash
+  OPENAI_API_KEY=sk-xxx          # OpenAI APIキー（必須）
+  BASIC_AUTH_USERNAME=admin      # Basic認証ユーザー名（オプション）
+  BASIC_AUTH_PASSWORD=password   # Basic認証パスワード（オプション）
+  ```
+
+### 6.6 重要な React フック使用例
+
+- `useState`: 各種ステート管理（locale, env, apiServerId, loggedIn, file, uploadError, imgUrl, processedImgUrl, aiBusy, aiError, lastApi, colorTemp, saturation, saved, aiPrompt）
+- `useRef`: DOM 参照（emailRef, passRef, imgEl, originalImgEl）
+- `useEffect`:
+  - file 変更時の URL 生成とクリーンアップ
+  - locale 変更時の aiPrompt 更新
+  - colorTemp/saturation 変更時の processedImgUrl 更新（デバウンス処理）
+
+### 6.7 ヘルパー関数
 
 - `sleep(ms)`: Promise ベースの遅延処理
 - `clamp(n, min, max)`: 数値の範囲制限
-- `makeCssFilter(colorTemp, saturation)`: CSS filter 文字列生成
 - `bakeToCanvas(img, colorTemp, saturation)`: Canvas への焼き込み
+- `generateBackgroundWithAI(prompt, apiBaseUrl)`: DALL-E 3 API呼び出し
+- `composeBackgroundWithImage(backgroundBase64, originalFile)`: 背景と元画像の合成
 
 ---
 
@@ -519,7 +596,7 @@ docker run -p 80:80 mabl-cosme-demo
 
 - **画像アップロード**:
   - 正常系: PNG/JPEG ファイル（10MB以下）
-  - 異常系: 
+  - 異常系:
     - 非画像ファイル → `upload-error` に "Only JPG/PNG supported"
     - 大容量ファイル → `upload-error` に "Max 10MB"
 
@@ -527,9 +604,11 @@ docker run -p 80:80 mabl-cosme-demo
   - 画像なし → アラート表示
   - 画像あり → `lastApi` に `status: 200`, `ok: true` など
   - ビジー状態 → ボタンテキスト変化、disabled 状態
+  - エラー時 → `ai-error` にエラーメッセージ表示
+  - 背景画像と元画像の合成確認
 
 - **色調補正**:
-  - スライダー操作 → プレビュー画像の filter 変化
+  - スライダー操作 → プレビュー画像の変化（Canvas API）
   - 適用ボタン → `lastApi.filterApplied: true`
 
 - **保存・ダウンロード**:
@@ -538,10 +617,14 @@ docker run -p 80:80 mabl-cosme-demo
 
 - **多言語切替**:
   - `lang-select` 変更 → UI ラベルが対応言語に変化
+  - AIプロンプトのデフォルト値も変化
   - data-testid は変化しない
 
 - **環境切替**:
   - `env-select` 変更 → 選択値が保持される
+
+- **APIサーバー切替**:
+  - `api-server-select` 変更 → AI生成時のAPI呼び出し先が変更される
 
 ### 7.2 API ペイロード検証
 
@@ -555,6 +638,7 @@ docker run -p 80:80 mabl-cosme-demo
 - 画像プレビューの表示
 - ギャラリーカードのグリッドレイアウト
 - 色調補正後の画像の視覚的変化
+- AI生成後の合成画像
 
 ---
 
@@ -562,10 +646,11 @@ docker run -p 80:80 mabl-cosme-demo
 
 本アプリケーションは、生成AI系SaaSを模した E2E テストデモ用 SPA です。主な特徴:
 
-- **完全クライアントサイド**: バックエンド不要、モックAPIで動作
+- **実際のAI連携**: DALL-E 3 APIによる背景生成と画像合成
+- **バックエンドAPI**: Express + OpenAI APIプロキシによるAPIキー管理
 - **テスタブル設計**: data-testid による安定したセレクタ
 - **多言語・環境切替**: 実際の国際化対応や環境分離をシミュレート
-- **視覚的フィードバック**: CSS filter によるリアルタイムプレビュー
-- **Canvas 焼き込み**: 保存・ダウンロード時に実際のピクセル操作
+- **Canvas API**: 色調補正・画像合成に実際のピクセル操作
+- **クラウドデプロイ対応**: Docker + Google Cloud Run
 
 mabl と LLM を組み合わせたテスト生成のデモとして、典型的な SaaS ワークフローを網羅しています。
