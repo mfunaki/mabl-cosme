@@ -267,6 +267,7 @@ export default function App() {
   const [imgUrl, setImgUrl] = useState<string | null>(null)
   const [processedImgUrl, setProcessedImgUrl] = useState<string | null>(null)
   const [aiBusy, setAiBusy] = useState(false)
+  const [aiButtonId] = useState(() => 'btn-' + Math.random().toString(36).substring(2, 7))
   const [aiError, setAiError] = useState<string | null>(null)
   const [lastApi, setLastApi] = useState<any>(null)
   const [colorTemp, setColorTemp] = useState(0)
@@ -462,9 +463,10 @@ export default function App() {
                   className="w-full border rounded-xl px-3 py-2 text-sm mb-3"
                   rows={2}
                 />
-                <button data-testid="btn-ai-generate" onClick={aiGenerate} disabled={!imgUrl || aiBusy} className="rounded-xl px-4 py-2 border disabled:opacity-50">
+                <button id={aiButtonId} data-testid="btn-ai-generate" onClick={aiGenerate} disabled={!imgUrl || aiBusy} className="rounded-xl px-4 py-2 border disabled:opacity-50">
                   {aiBusy ? t.generating : t.aiGenerate}
                 </button>
+                <span className="ml-2 text-xs text-gray-500">{aiButtonId}</span>
                 {aiError && <p className="text-red-600 text-sm mt-2" data-testid="ai-error">{aiError}</p>}
               </div>
 
