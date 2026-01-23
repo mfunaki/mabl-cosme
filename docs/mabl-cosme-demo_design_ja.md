@@ -4,7 +4,7 @@
 
 - プロジェクト名: **mabl-cosme**
 - リポジトリ: **mabl-cosme**
-- 想定ドメイン: ローカル実行 (`http://localhost:5173` - Vite dev / `http://localhost:3000` - API server) または Docker (`http://localhost:8080`)
+- 想定ドメイン: ローカル実行 (`http://localhost:5173` - Vite dev / `http://localhost:3000` - API server) または Docker (`http://localhost:3000`)
 - 技術スタック（実装済み）:
   - フロントエンド: React 18.2.0 + TypeScript 5.2.2 + Vite 5.2.0
   - スタイル: Tailwind CSS 3.x（CDN読み込み）
@@ -119,11 +119,13 @@ mabl-cosme-demo は、以下の一連のワークフローを再現するデモ�
 2. **画像プレビュー**
    - 正方形アスペクト（aspect-square）のプレビュー領域
    - 背景色: slate-100
-   - アップロード済み画像:
+   - プレビュー用画像:
      - `data-testid="img-preview"`
      - `ref={imgEl}` を使用（HTMLImageElement）
-     - 色調補正はCanvas APIで実際にピクセル操作して反映
-     - `onLoad` イベントで `lastApi` に `{ok:true, message:'image-loaded'}` を設定
+     - `processedImgUrl` または `imgUrl` を表示し、色調補正は Canvas API の結果（`bakeToCanvas`）を反映
+   - 元画像保持用の非表示 `<img>` 要素:
+     - `ref={originalImgEl}` を使用（`className="hidden"`）
+     - `onLoad` イベントで `lastApi` に `{ok: true, message: 'image-loaded'}` を設定
    - 未アップロード時: 「No image」テキスト表示（opacity-50）
 
 3. **AI 背景生成**
@@ -536,14 +538,14 @@ npm run lint
 ### 6.4 Docker デプロイ
 
 ```bash
-# Docker Compose でローカル実行（ポート 8080）
+# Docker Compose でローカル実行（ポート 3000）
 docker compose up --build
 
 # イメージビルド
 docker build -t mabl-cosme .
 
 # コンテナ実行（ポート 3000）
-docker run -p 8080:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY mabl-cosme
+docker run -p 3000:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY mabl-cosme
 ```
 
 - ビルドステージ: Node.js 20-alpine で npm ビルド
@@ -555,7 +557,7 @@ docker run -p 8080:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY mabl-cosme
 
 - **Express アプリケーション**
   - JSONボディパーサー: 最大10MB対応
-  - Basic認証ミドルウェア（環境変数で有効化）
+  - Basic認証ミドルウェア（環境変数で有効化。`dist` 配下の静的ファイル配信と SPA ルートに適用されるが、`/api/*` には適用しない）
   - APIプロキシ: `/api/openai` → OpenAI API
   - 本番モード: 静的ファイル配信 + SPA フォールバック
   - 開発モード: API のみ提供
