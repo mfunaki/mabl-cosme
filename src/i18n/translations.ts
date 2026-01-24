@@ -1,19 +1,92 @@
-// ...existing code...
+import type { Translations } from './types'
 
-export const translations = {
+/**
+ * アプリケーション翻訳辞書
+ * 対応言語: 日本語 (ja), 英語 (en), 中国語 (zh)
+ */
+export const translations: Translations = {
   ja: {
-    // ...existing code...
+    appTitle: 'AIビジュアル制作ワークフロー(デモ)',
+    env: '環境',
+    login: 'ログイン',
+    logout: 'ログアウト',
+    email: 'メールアドレス',
+    password: 'パスワード',
+    upload: '画像をアップロード',
+    orDrop: 'または ここにドロップ',
+    aiGenerate: '背景をAIで生成',
+    adjust: '色調補正',
+    colorTemp: '色温度',
+    saturation: '彩度',
+    apply: '適用',
+    save: '保存',
+    download: 'ダウンロード',
+    gallery: 'ギャラリー',
+    language: '言語',
+    generating: '生成中...',
+    applied: '適用しました',
+    saved: '保存しました',
+    needImage: '先に画像をアップロードしてください',
+    promptLabel: '背景生成プロンプト',
     defaultPrompt: 'ハワイの海岸の背景',
-    // ...existing code...
+    apiServer: 'APIサーバー',
+    sameHost: '同一ホスト',
+    cloudServer: '別ホスト',
   },
   en: {
-    // ...existing code...
+    appTitle: 'AI Visual Creation Workflow (Demo)',
+    env: 'Environment',
+    login: 'Log In',
+    logout: 'Log Out',
+    email: 'Email',
+    password: 'Password',
+    upload: 'Upload Image',
+    orDrop: 'or drop here',
+    aiGenerate: 'Generate Background (AI)',
+    adjust: 'Adjust Colors',
+    colorTemp: 'Color Temp',
+    saturation: 'Saturation',
+    apply: 'Apply',
+    save: 'Save',
+    download: 'Download',
+    gallery: 'Gallery',
+    language: 'Language',
+    generating: 'Generating...',
+    applied: 'Applied',
+    saved: 'Saved',
+    needImage: 'Please upload an image first',
+    promptLabel: 'Background Generation Prompt',
     defaultPrompt: 'Hawaiian beach background',
-    // ...existing code...
+    apiServer: 'API Server',
+    sameHost: 'Same Host',
+    cloudServer: 'Different Host',
   },
   zh: {
-    // ...existing code...
+    appTitle: 'AI 视觉生成工作流(演示)',
+    env: '环境',
+    login: '登录',
+    logout: '登出',
+    email: '邮箱',
+    password: '密码',
+    upload: '上传图片',
+    orDrop: '或拖拽到此',
+    aiGenerate: 'AI 生成背景',
+    adjust: '色彩调整',
+    colorTemp: '色温',
+    saturation: '饱和度',
+    apply: '应用',
+    save: '保存',
+    download: '下载',
+    gallery: '图库',
+    language: '语言',
+    generating: '生成中...',
+    applied: '已应用',
+    saved: '已保存',
+    needImage: '请先上传图片',
+    promptLabel: '背景生成提示',
     defaultPrompt: '夏威夷海滩背景',
-    // ...existing code...
-  }
-};
+    apiServer: 'API服务器',
+    sameHost: '同一主机',
+    cloudServer: '其他主机',
+  },
+}

@@ -46,14 +46,6 @@ const basicAuthMiddleware = (req, res, next) => {
   return res.status(401).send('Invalid credentials');
 };
 
-// 全リクエストのヘッダーをチェックするミドルウェア（デバッグ用）
-// TODO: 本番環境にデプロイする前に削除してください
-app.use((req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  console.log(`[DEBUG_AUTH] URL: ${req.url}, Authorization: ${authHeader ? authHeader : '(header not present)'}`);
-  next();
-});
-
 // リクエストログ
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/')) {
@@ -99,9 +91,6 @@ app.listen(PORT, () => {
   console.log(`Mode: ${isProduction ? 'production' : 'development'}`);
   console.log(`Basic Auth enabled: ${!!(process.env.BASIC_AUTH_USERNAME && process.env.BASIC_AUTH_PASSWORD)}`);
   console.log(`OpenAI API Key configured: ${!!process.env.OPENAI_API_KEY}`);
-  if (process.env.OPENAI_API_KEY) {
-    console.log(`API Key prefix: ${process.env.OPENAI_API_KEY.substring(0, 10)}...`);
-  }
   if (!isProduction) {
     console.log('\n💡 Development mode: Run "npm run dev" in another terminal for the frontend\n');
   }
