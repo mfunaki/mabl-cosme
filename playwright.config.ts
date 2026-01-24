@@ -1,4 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
+import dotenv from 'dotenv'
+import path from 'path'
+
+dotenv.config({ path: path.resolve(import.meta.dirname, '.env.test') });
 
 /**
  * Playwright Test Configuration
@@ -11,10 +15,21 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  reporter: [
+    // Reference the mabl Playwright reporter for use in your test runs
+    [
+      '@mablhq/playwright-reporter',
+      {
+        apiKey: process.env.MABL_API_KEY,
+        workspaceId: process.env.MABL_WORKSPACE_ID,
+        planName: '[mabl-cosme]'
+      },
+    ],
+  ],
   use: {
     baseURL: 'http://localhost:5173',
-    trace: 'on-first-retry',
+    trace: 'on',
+    screenshot: 'on',
   },
   projects: [
     {
