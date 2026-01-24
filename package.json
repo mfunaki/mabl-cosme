@@ -10,7 +10,10 @@
         "build": "tsc && vite build",
         "start": "node --env-file=.env server/index.js",
         "preview": "npm run build && npm start",
-        "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+        "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+        "test": "playwright test",
+        "test:ui": "playwright test --ui",
+        "test:report": "playwright show-report"
     },
     "dependencies": {
         "dotenv": "17.2.3",
@@ -21,6 +24,9 @@
         "react-dom": "^18.2.0"
     },
     "devDependencies": {
+        "@mablhq/playwright-reporter": "^0.5.10",
+        "@playwright/experimental-ct-react": "^1.58.0",
+        "@playwright/test": "^1.58.0",
         "@types/react": "^18.2.66",
         "@types/react-dom": "^18.2.22",
         "@typescript-eslint/eslint-plugin": "^7.2.0",
