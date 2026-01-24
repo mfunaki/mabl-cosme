@@ -89,10 +89,10 @@ server/
 
 ### テスト駆動開発 (TDD)
 
-このプロジェクトではTDDを採用しています。
+このプロジェクトではTDDを採用しています。詳細は[テスト戦略と実装指針](#テスト戦略と実装指針)を参照。
 
 ```
-1. テストを書く (Red)
+1. Playwrightテストを書く (Red)
    ↓
 2. テストが失敗することを確認
    ↓
@@ -101,7 +101,11 @@ server/
 4. リファクタリング (Refactor)
    ↓
 5. 繰り返し
+   ↓
+6. 機能完成後、必要に応じてmablでE2Eテストを作成
 ```
+
+**重要**: 単体テストはPlaywright、E2Eテストはmablと役割を明確に分離する。
 
 ### ブランチ戦略
 
@@ -196,40 +200,64 @@ const ItemList = ({ items, onSelect }: Props) => {
 
 ---
 
-## テスト方針
+## テスト戦略と実装指針
 
-### テストフレームワーク
+プロジェクトの品質管理において、以下の役割分担を厳守すること。
 
-- **E2Eテスト**: Playwright
-- **レポート**: mabl Playwright Reporter
+### テストピラミッド
 
-### テストファイル配置
+```
+        ┌─────────┐
+        │  E2E    │  ← mabl (ユーザーワークフロー)
+        │ (mabl)  │
+       ┌┴─────────┴┐
+       │   単体     │  ← Playwright (モジュール単位)
+       │(Playwright)│
+      └─────────────┘
+```
+
+### 1. 単体テスト (Unit / Component Testing)
+
+| 項目 | 内容 |
+|------|------|
+| **ツール** | Playwright |
+| **格納場所** | 対象ソースファイルと同じディレクトリ内の `__tests__/` フォルダ |
+| **命名規則** | `[ファイル名].spec.ts` または `[ファイル名].spec.tsx` |
+| **レポート** | mabl Playwright Reporter (`@mablhq/playwright-reporter`) |
+
+#### ファイル配置例
 
 ```
 src/
 ├── components/
 │   ├── Header.tsx
 │   └── __tests__/
-│       └── Header.spec.ts    # Header.tsxのテスト
+│       └── Header.spec.ts    # Header.tsxの単体テスト
 ├── utils/
 │   ├── imageProcessor.ts
 │   └── __tests__/
 │       └── imageProcessor.spec.ts
 ```
 
-### テストの書き方
+#### 実装基準
+
+- 各モジュールのロジック、関数、UIコンポーネントの単体動作を検証する
+- 外部APIや副作用がある場合は、Playwrightの `route` や `mock` 機能を使用して隔離する
+- 正常系・異常系・境界値を網羅する
+
+#### テストの書き方
 
 ```typescript
 import { test, expect } from '@playwright/test'
 
-test.describe('コンポーネント名', () => {
+test.describe('Header Component', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
   })
 
   // 正常系
-  test('should render correctly', async ({ page }) => {
-    await expect(page.getByTestId('element-id')).toBeVisible()
+  test('should render app title', async ({ page }) => {
+    await expect(page.getByTestId('app-title')).toBeVisible()
   })
 
   // 異常系
@@ -238,21 +266,96 @@ test.describe('コンポーネント名', () => {
     await page.getByTestId('submit').click()
     await expect(page.getByTestId('error')).toBeVisible()
   })
+
+  // 外部APIのモック
+  test('should handle API error gracefully', async ({ page }) => {
+    await page.route('**/api/openai', route => {
+      route.fulfill({ status: 500, body: 'Server Error' })
+    })
+    // エラーハンドリングの検証
+  })
 })
 ```
 
-### テストコマンド
+#### テストコマンド
 
 ```bash
 # テスト実行
 npm run test
 
-# UIモードで実行
+# UIモードで実行 (デバッグ向け)
 npm run test:ui
 
 # レポート表示
 npm run test:report
 ```
+
+### 2. E2Eテスト (End-to-End Testing)
+
+| 項目 | 内容 |
+|------|------|
+| **ツール** | mabl |
+| **管理場所** | mabl クラウド |
+| **実行方法** | mabl CLI または mabl ダッシュボード |
+
+#### 実装基準
+
+- ユーザーの実際のワークフロー、画面遷移、統合的な動作を検証する
+- ブラウザ上での複雑なアサーションや、複数画面にまたがるシナリオはmablで管理する
+- Claude Codeは `mabl CLI` を活用し、必要に応じて既存テストの実行や新規テストの要件定義を行う
+
+#### mabl CLIの使用例
+
+```bash
+# テスト一覧の取得
+mabl tests list
+
+# テストの実行
+mabl tests run --id <test-id>
+
+# デプロイメントイベントの送信
+mabl deployments create --application-id <app-id> --environment-id <env-id>
+```
+
+#### Playwright vs mabl の使い分け
+
+| 観点 | Playwright (単体テスト) | mabl (E2Eテスト) |
+|------|------------------------|------------------|
+| スコープ | 単一コンポーネント/関数 | ユーザーワークフロー全体 |
+| 実行速度 | 高速 | 中速 |
+| メンテナンス | 開発者がコードで管理 | QAチームがUIで管理 |
+| 適用シナリオ | ロジック検証、回帰テスト | 統合テスト、クロスブラウザ |
+| モック | 積極的に使用 | 実環境に近い状態で実行 |
+
+### 3. テストの自律実行
+
+コード修正・リファクタリング後は、以下のフローを**必ず**実行すること。
+
+```
+コード修正
+    ↓
+npm run test (Playwright単体テスト実行)
+    ↓
+  ┌─────────────────┐
+  │ テスト結果確認   │
+  └─────────────────┘
+    ↓           ↓
+  成功         失敗
+    ↓           ↓
+  完了      原因分析
+              ↓
+          コードまたは
+          テストを修正
+              ↓
+          再実行 (ループ)
+```
+
+#### 自律実行のルール
+
+1. **修正後は必ずテスト実行**: 関連するPlaywright単体テストを実行し、パスを確認
+2. **失敗時は自律修正**: テスト失敗の原因を分析し、コードまたはテストを修正
+3. **全テストパスまで継続**: すべてのテストがパスするまで修正を繰り返す
+4. **mablテストへの影響確認**: `data-testid`を変更した場合はmablテストへの影響を報告
 
 ---
 
@@ -310,7 +413,18 @@ const MyComponent = () => {
 
 ## data-testid規約
 
-mablテストとの互換性を維持するため、`data-testid`属性は変更しないでください。
+`data-testid`属性は**Playwright単体テスト**と**mabl E2Eテスト**の両方で使用されます。
+既存の`data-testid`を変更すると両方のテストに影響するため、変更は慎重に行ってください。
+
+### 変更時の影響範囲
+
+| 変更内容 | Playwright | mabl |
+|----------|------------|------|
+| `data-testid`の追加 | テスト追加が必要 | テスト追加が必要 |
+| `data-testid`の削除 | テスト修正が必要 | テスト修正が必要 |
+| `data-testid`の変更 | テスト修正が必要 | テスト修正が必要 |
+
+**重要**: `data-testid`を変更した場合は、Playwrightテストを修正した上で、mablテストへの影響も報告すること。
 
 ### 命名規則
 
@@ -362,9 +476,9 @@ select-{name}     # セレクト: env-select, lang-select
 
 ## トラブルシューティング
 
-### よくある問題
+### Playwrightテスト関連
 
-**Q: テストが失敗する**
+**Q: Playwrightテストが失敗する**
 
 ```bash
 # Playwrightブラウザを再インストール
@@ -372,7 +486,46 @@ npx playwright install
 
 # キャッシュをクリア
 rm -rf node_modules/.cache
+
+# 特定のテストのみ実行してデバッグ
+npm run test -- --grep "テスト名"
+
+# UIモードでステップ実行
+npm run test:ui
 ```
+
+**Q: テストがタイムアウトする**
+
+```bash
+# タイムアウトを延長して実行
+npm run test -- --timeout=60000
+
+# 開発サーバーが起動しているか確認
+curl http://localhost:5173
+```
+
+### mabl関連
+
+**Q: mabl CLIが動作しない**
+
+```bash
+# mabl CLIのインストール確認
+mabl --version
+
+# 認証状態の確認
+mabl auth status
+
+# 再認証
+mabl auth login
+```
+
+**Q: mablテストでdata-testidが見つからない**
+
+1. Playwrightテストで同じ`data-testid`が動作するか確認
+2. 要素が動的に生成される場合は、適切な待機処理を追加
+3. `data-testid`が変更されていないか履歴を確認
+
+### 開発環境関連
 
 **Q: 型エラーが発生する**
 
@@ -399,8 +552,17 @@ kill -9 <PID>
 
 ## 参考リンク
 
+### 開発ツール
+
 - [React Documentation](https://react.dev/)
 - [TypeScript Handbook](https://www.typescriptlang.org/docs/)
-- [Playwright Documentation](https://playwright.dev/)
+- [Vite Documentation](https://vitejs.dev/)
 - [Tailwind CSS](https://tailwindcss.com/)
+
+### テストツール
+
+- [Playwright Documentation](https://playwright.dev/)
+- [Playwright Test API](https://playwright.dev/docs/api/class-test)
 - [mabl Documentation](https://help.mabl.com/)
+- [mabl CLI Reference](https://help.mabl.com/docs/mabl-cli)
+- [mabl Playwright Reporter](https://www.npmjs.com/package/@mablhq/playwright-reporter)
