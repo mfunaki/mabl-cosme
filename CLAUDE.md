@@ -114,12 +114,25 @@ POST /api/openai
 
 ## GitHub Actions / CI環境での設定
 
-以下のシークレットを設定:
+`.github/workflows/deploy.yml`でCloud Runへの自動デプロイを実行。
+
+以下のシークレットをGitHub Secretsに設定:
+
+| シークレット | 説明 |
+|-------------|------|
+| `GCP_PROJECT_ID` | Google Cloud プロジェクトID |
+| `WIF_PROVIDER` | Workload Identity Federation プロバイダー |
+| `WIF_SERVICE_ACCOUNT` | サービスアカウント |
+| `OPENAI_API_KEY` | OpenAI APIキー |
+| `AUTH_USERNAME` | ログイン用ユーザー名 |
+| `AUTH_PASSWORD` | ログイン用パスワード |
+| `JWT_SECRET` | JWT署名用シークレット |
+
+デプロイ時に環境変数としてCloud Runに渡される:
 
 ```yaml
-env:
-  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  AUTH_USERNAME: ${{ secrets.AUTH_USERNAME }}
-  AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD }}
-  JWT_SECRET: ${{ secrets.JWT_SECRET }}
+--set-env-vars "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}"
+--set-env-vars "AUTH_USERNAME=${{ secrets.AUTH_USERNAME }}"
+--set-env-vars "AUTH_PASSWORD=${{ secrets.AUTH_PASSWORD }}"
+--set-env-vars "JWT_SECRET=${{ secrets.JWT_SECRET }}"
 ```

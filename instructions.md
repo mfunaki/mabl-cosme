@@ -11,6 +11,8 @@
 5. [テスト戦略と実装指針](#テスト戦略と実装指針)
 6. [国際化(i18n)](#国際化i18n)
 7. [data-testid規約](#data-testid規約)
+8. [環境変数](#環境変数)
+9. [CI/CD・デプロイメント](#cicdデプロイメント)
 
 ---
 
@@ -494,6 +496,94 @@ select-{name}     # セレクト: env-select, lang-select
 // Bad: 不一致な命名
 <button data-testid="resetButton">リセット</button>
 <button data-testid="reset">リセット</button>
+```
+
+---
+
+## 環境変数
+
+### ローカル開発
+
+`.env`ファイルを作成し、以下を設定（`.env.example`を参照）:
+
+| 変数名 | 説明 | 必須 | デフォルト |
+|--------|------|------|-----------|
+| `OPENAI_API_KEY` | OpenAI APIキー（背景生成機能に必要） | Yes | - |
+| `AUTH_USERNAME` | ログイン用ユーザー名 | No | `demo` |
+| `AUTH_PASSWORD` | ログイン用パスワード | No | `demo123` |
+| `JWT_SECRET` | JWT署名用シークレット | No | ランダム生成 |
+| `BASIC_AUTH_USERNAME` | Basic認証ユーザー名（オプション） | No | - |
+| `BASIC_AUTH_PASSWORD` | Basic認証パスワード（オプション） | No | - |
+
+### Docker
+
+`docker-compose.yml`で以下の環境変数を`.env`から読み込み:
+
+```yaml
+environment:
+  - NODE_ENV=production
+  - OPENAI_API_KEY=${OPENAI_API_KEY}
+  - AUTH_USERNAME=${AUTH_USERNAME}
+  - AUTH_PASSWORD=${AUTH_PASSWORD}
+  - JWT_SECRET=${JWT_SECRET}
+```
+
+---
+
+## CI/CD・デプロイメント
+
+### GitHub Actionsワークフロー
+
+`.github/workflows/deploy.yml`でCloud Runへの自動デプロイを実行:
+
+```
+main ブランチへのpush
+    ↓
+GitHub Actions トリガー
+    ↓
+Docker イメージをビルド
+    ↓
+Artifact Registry にプッシュ
+    ↓
+Cloud Run にデプロイ
+```
+
+### 必要なGitHub Secretsシークレット
+
+| シークレット名 | 説明 |
+|---------------|------|
+| `GCP_PROJECT_ID` | Google Cloud プロジェクトID |
+| `WIF_PROVIDER` | Workload Identity Federation プロバイダー |
+| `WIF_SERVICE_ACCOUNT` | サービスアカウント |
+| `OPENAI_API_KEY` | OpenAI APIキー |
+| `AUTH_USERNAME` | ログイン用ユーザー名 |
+| `AUTH_PASSWORD` | ログイン用パスワード |
+| `JWT_SECRET` | JWT署名用シークレット |
+
+### Cloud Run環境変数
+
+`deploy.yml`で以下の環境変数をCloud Runに渡す:
+
+```bash
+gcloud run deploy mabl-cosme \
+  --set-env-vars "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
+  --set-env-vars "AUTH_USERNAME=${{ secrets.AUTH_USERNAME }}" \
+  --set-env-vars "AUTH_PASSWORD=${{ secrets.AUTH_PASSWORD }}" \
+  --set-env-vars "JWT_SECRET=${{ secrets.JWT_SECRET }}" \
+  --set-env-vars "NODE_ENV=production"
+```
+
+### ローカルDocker実行
+
+```bash
+# ビルドして起動
+docker compose up -d --build
+
+# ログ確認
+docker compose logs -f
+
+# 停止
+docker compose down
 ```
 
 ---

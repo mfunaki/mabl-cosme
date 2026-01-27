@@ -22,9 +22,9 @@
 
 mabl-cosme-demo は、以下の一連のワークフローを再現するデモアプリである。
 
-1. ログイン（モック）
+1. ログイン（**JWT認証**）
 2. 画像アップロード（製品写真などを想定）
-3. 「AI背景生成」（**実際のDALL-E 3 API呼び出し**）
+3. 「AI背景生成」（**実際のDALL-E 3 API呼び出し**、JWT認証必須）
 4. 背景画像と元画像の合成
 5. 色調補正（色温度 / 彩度）
 6. 画像の保存・ダウンロード
@@ -36,6 +36,7 @@ mabl-cosme-demo は、以下の一連のワークフローを再現するデモ�
 **目的**:
 - LLM が仕様を読み取り、UIコード・状態管理・テストコード（mablテストステップ）を自動生成しやすい構成にする。
 - mabl の UIテスト / APIライクな検証 / ビジュアル検証のデモ題材として利用する。
+- mabl API テストのデモ題材として、JWT認証付きAPIを提供する。
 
 ---
 
@@ -79,29 +80,36 @@ mabl-cosme-demo は、以下の一連のワークフローを再現するデモ�
 ### 3.2 Auth セクション
 
 - セクションタイトル: "Auth" (固定・英語)
-- ログインフォーム（モック認証）
-  - メールアドレス入力:
-    - `data-testid="email"`
-    - `ref` を使用（emailRef）
+- ログインフォーム（JWT認証）
+  - ユーザー名入力:
+    - `data-testid="username"`
     - placeholder: "user@example.com"
   - パスワード入力:
     - `data-testid="password"`
-    - `ref` を使用（passRef）
     - `type="password"`
     - placeholder: "••••••••"
+  - APIサーバー選択（ログイン画面内）:
+    - `data-testid="api-server-select"`
+    - 同一ホスト / 別ホスト
   - ログインボタン:
     - `data-testid="btn-login"`
+  - エラー表示:
+    - `data-testid="login-error"`（認証失敗時のみ表示、赤色テキスト）
   - ログイン後状態表示:
     - `data-testid="login-state"`
     - テキスト: "Logged in" (固定・英語、緑色のテキストで表示)
   - ログアウトボタン:
     - `data-testid="btn-logout"`
     - ログイン時のみ表示
+  - 認証フロー:
+    - `POST /api/login` でユーザー名・パスワードを送信
+    - サーバーがJWTトークンを返却
+    - トークンはAuthContextで管理し、API呼び出し時にAuthorizationヘッダーに付与
 
-### 3.3 Upload & 編集セクション
+### 3.3 画像生成 & 編集セクション
 
 1. **画像アップロードエリア**
-   - セクションタイトル: "Upload" (固定・英語)
+   - セクションタイトル: 「画像生成」/「Image Generation」/「图片生成」（言語切替対応）
    - 「画像をアップロード」ボタン (labelでfile inputトリガ)
      - `data-testid="btn-upload"`
      - `id="file-input"` (hidden input)
@@ -223,10 +231,13 @@ mabl-cosme-demo は、以下の一連のワークフローを再現するデモ�
 
 1. ユーザーがアプリを開く
 2. 環境を確認（デフォルト: `staging`）
-3. メールアドレス・パスワード入力 → ログイン
+3. ユーザー名・パスワード入力 → ログイン（JWT認証）
+   - `POST /api/login` でJWTトークンを取得
+   - トークンはAuthContextで管理
 4. 画像をアップロード（またはドラッグ）
 5. 背景生成プロンプトを入力（またはデフォルト使用）
 6. 「背景をAIで生成」ボタン押下
+   - `Authorization: Bearer <token>` ヘッダー付きでAPI呼び出し
    - DALL-E 3で背景生成
    - 元画像と合成
    - `api-payload` に `status: 200, ok: true` 表示
@@ -234,6 +245,13 @@ mabl-cosme-demo は、以下の一連のワークフローを再現するデモ�
 8. 「適用」ボタン押下 → `filterApplied: true` となる
 9. 「保存」ボタン押下 → ギャラリーに1件追加される
 10. 「ダウンロード」でPNGを保存
+
+### シナリオ A': 認証エラー
+
+1. ユーザーがアプリを開く
+2. 不正なユーザー名・パスワードを入力 → ログイン試行
+3. `login-error` に "Invalid credentials" エラー表示
+4. 正しい認証情報を入力 → ログイン成功
 
 ### シナリオ B: 多言語確認
 
@@ -271,18 +289,28 @@ mabl-cosme-demo は、以下の一連のワークフローを再現するデモ�
 - 全てのテキストは言語テーブル `T[locale]` から取得。
 - data-testid は **固定文字列** とし、翻訳の影響を受けない。
 
-### 5.2 認証（モック）
+### 5.2 認証（JWT認証）
 
-- 実際のバックエンド連携は行わない。
-- メール・パスワードがともに非空の時、`btn-login` クリックで `loggedIn = true`。
-  - `emailRef.current?.value` と `passRef.current?.value` をチェック
+- サーバーサイドJWT認証を実装。
+- ログインフロー:
+  1. ユーザー名・パスワードを `POST /api/login` に送信
+  2. サーバーが認証情報を検証（環境変数 `AUTH_USERNAME`, `AUTH_PASSWORD` と照合）
+  3. 認証成功時: JWTトークンを返却 `{ token: "eyJhbG..." }`
+  4. 認証失敗時: `{ error: "Invalid credentials" }` を返却
+- トークン管理:
+  - `AuthContext` でトークンを管理
+  - `useAuth()` フックで `token`, `login`, `logout` を提供
+  - トークンはメモリ内に保持（ページリロードでログアウト）
 - ログイン状態:
   - `login-state` に `"Logged in"` を表示（固定・英語、text-emerald-700）
   - ログアウトボタン表示 (`btn-logout`)
   - ログイン成功後、入力フォームは非表示になる
 - ログアウト時:
-  - `setLoggedIn(false)` で状態をリセット
+  - `logout()` でトークンをクリア
   - ログインフォームが再表示される
+- API呼び出し時:
+  - `Authorization: Bearer <token>` ヘッダーを付与
+  - トークンが無効または期限切れの場合は401エラー
 
 ### 5.3 画像アップロード
 
@@ -306,7 +334,9 @@ mabl-cosme-demo は、以下の一連のワークフローを再現するデモ�
   - 画像が読み込まれていない場合 (`!file || !imgEl.current`) → ブラウザアラート表示（t.needImage）
   - 読み込まれている場合:
     - `aiBusy = true`（ボタンテキストが「生成中...」に変更）
-    - `generateBackgroundWithAI(aiPrompt, apiBaseUrl)` を非同期呼び出し
+    - `generateBackgroundWithAI(aiPrompt, apiBaseUrl, token)` を非同期呼び出し
+    - **JWT認証**: `Authorization: Bearer <token>` ヘッダーを付与
+    - 認証エラー (401) の場合: `aiError` に "Authorization required" を設定
     - 成功時: `composeBackgroundWithImage` で背景と元画像を合成
     - 合成結果を `imgUrl` に設定
     - 失敗時: `aiError` にエラーメッセージを設定
@@ -315,12 +345,21 @@ mabl-cosme-demo は、以下の一連のワークフローを再現するデモ�
 
 - `generateBackgroundWithAI` 関数の実装:
   ```typescript
-  async function generateBackgroundWithAI(prompt: string, apiBaseUrl: string) {
+  async function generateBackgroundWithAI(prompt: string, apiBaseUrl: string, token?: string | null) {
     const enhancedPrompt = `Generate a background image that is: ${prompt}. The image should be suitable as a professional background. High quality, detailed.`
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+
+    // JWTトークンがある場合はAuthorizationヘッダーを追加
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
 
     const response = await fetch(`${apiBaseUrl}/api/openai`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         model: "dall-e-3",
         prompt: enhancedPrompt,
@@ -492,13 +531,29 @@ mabl-cosme-demo は、以下の一連のワークフローを再現するデモ�
 ├── docs/
 │   └── mabl-cosme-demo_design_ja.md  # 設計ドキュメント（本ファイル）
 ├── server/
-│   ├── index.js            # Express サーバー
-│   └── proxy.js            # OpenAI API プロキシ
+│   ├── index.js            # Express サーバー（静的ファイル配信 + API）
+│   ├── proxy.js            # APIルート (/api/login, /api/openai)
+│   └── auth.js             # JWT認証ロジック
 └── src/
-    ├── App.tsx             # メインアプリケーションコンポーネント
+    ├── App.tsx             # ルートコンポーネント（状態管理・レイアウト）
     ├── main.tsx            # React エントリーポイント
-    ├── contexts/           # React Context（多言語用、未使用）
-    └── i18n/               # 翻訳ファイル（テンプレート）
+    ├── components/         # UIコンポーネント
+    │   ├── Header.tsx      # ヘッダー (環境/言語選択)
+    │   ├── AuthSection.tsx # 認証フォーム
+    │   ├── ImageEditor.tsx # 画像編集 (アップロード/AI生成/色調補正)
+    │   └── Gallery.tsx     # ギャラリー (保存済み画像一覧)
+    ├── contexts/           # React Context
+    │   ├── LanguageContext.tsx # 言語切り替えContext
+    │   └── AuthContext.tsx     # 認証状態管理Context（JWTトークン）
+    ├── services/           # 外部サービス連携
+    │   └── api.ts          # API呼び出し関数
+    ├── utils/              # ユーティリティ関数
+    │   └── imageProcessor.ts # 画像処理 (Canvas操作)
+    ├── constants/          # 定数定義
+    │   └── config.ts       # アプリ設定値
+    └── i18n/               # 国際化
+        ├── translations.ts # 翻訳辞書
+        └── types.ts        # 翻訳キーの型定義
 ```
 
 ### 6.2 主要な依存関係
@@ -510,6 +565,7 @@ mabl-cosme-demo は、以下の一連のワークフローを再現するデモ�
 - @vitejs/plugin-react: 4.2.1
 - Express: 4.18.2
 - OpenAI SDK: 4.77.3
+- jsonwebtoken: JWT認証用
 - Tailwind CSS: 3.x（CDN）
 - concurrently: 8.2.2（開発時）
 
@@ -558,13 +614,56 @@ docker run -p 3000:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY mabl-cosme
 - **Express アプリケーション**
   - JSONボディパーサー: 最大10MB対応
   - Basic認証ミドルウェア（環境変数で有効化。`dist` 配下の静的ファイル配信と SPA ルートに適用されるが、`/api/*` には適用しない）
-  - APIプロキシ: `/api/openai` → OpenAI API
   - 本番モード: 静的ファイル配信 + SPA フォールバック
   - 開発モード: API のみ提供
+
+- **APIエンドポイント**
+  - `POST /api/login`: JWT認証
+    - リクエスト: `{ username: string, password: string }`
+    - 成功時: `{ token: "eyJhbG..." }` (JWTトークン、有効期限24時間)
+    - 失敗時: `{ error: "Invalid credentials" }` (401)
+  - `POST /api/openai`: OpenAI API プロキシ（JWT認証必須）
+    - ヘッダー: `Authorization: Bearer <token>`
+    - 認証エラー時: `{ error: "Authorization header required" }` または `{ error: "Invalid token" }` (401)
+
+- **JWT認証 (`server/auth.js`)**
+  ```javascript
+  import jwt from 'jsonwebtoken'
+
+  const JWT_SECRET = process.env.JWT_SECRET || 'mabl-cosme-demo-secret-key'
+  const AUTH_USERNAME = process.env.AUTH_USERNAME || 'demo'
+  const AUTH_PASSWORD = process.env.AUTH_PASSWORD || 'demo123'
+
+  export function authenticateUser(username, password) {
+    if (username === AUTH_USERNAME && password === AUTH_PASSWORD) {
+      const token = jwt.sign({ username, iat: Date.now() }, JWT_SECRET, { expiresIn: '24h' })
+      return { success: true, token }
+    }
+    return { success: false, error: 'Invalid credentials' }
+  }
+
+  export function verifyToken(req, res, next) {
+    const authHeader = req.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authorization header required' })
+    }
+    const token = authHeader.split(' ')[1]
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET)
+      req.user = decoded
+      next()
+    } catch (error) {
+      return res.status(401).json({ error: error.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token' })
+    }
+  }
+  ```
 
 - **環境変数**
   ```bash
   OPENAI_API_KEY=sk-xxx          # OpenAI APIキー（必須）
+  AUTH_USERNAME=demo             # ログイン用ユーザー名（デフォルト: demo）
+  AUTH_PASSWORD=demo123          # ログイン用パスワード（デフォルト: demo123）
+  JWT_SECRET=your-secret-key     # JWT署名用シークレット
   BASIC_AUTH_USERNAME=admin      # Basic認証ユーザー名（オプション）
   BASIC_AUTH_PASSWORD=password   # Basic認証パスワード（オプション）
   ```
@@ -592,9 +691,11 @@ docker run -p 3000:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY mabl-cosme
 
 ### 7.1 mabl での検証項目
 
-- **認証フロー**:
-  - ログイン成功（メール・パスワード入力 → `login-state` 表示）
+- **認証フロー（JWT認証）**:
+  - ログイン成功（ユーザー名・パスワード入力 → `login-state` 表示）
+  - ログイン失敗（不正な認証情報 → `login-error` にエラー表示）
   - ログアウト（`btn-logout` → フォーム再表示）
+  - API呼び出し時のトークン検証
 
 - **画像アップロード**:
   - 正常系: PNG/JPEG ファイル（10MB以下）
@@ -603,6 +704,7 @@ docker run -p 3000:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY mabl-cosme
     - 大容量ファイル → `upload-error` に "Max 10MB"
 
 - **AI 生成**:
+  - 未ログイン状態 → 認証エラー表示
   - 画像なし → アラート表示
   - 画像あり → `lastApi` に `status: 200`, `ok: true` など
   - ビジー状態 → ボタンテキスト変化、disabled 状態
@@ -648,11 +750,12 @@ docker run -p 3000:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY mabl-cosme
 
 本アプリケーションは、生成AI系SaaSを模した E2E テストデモ用 SPA です。主な特徴:
 
+- **JWT認証**: サーバーサイドJWT認証によるセキュアなAPI呼び出し
 - **実際のAI連携**: DALL-E 3 APIによる背景生成と画像合成
 - **バックエンドAPI**: Express + OpenAI APIプロキシによるAPIキー管理
 - **テスタブル設計**: data-testid による安定したセレクタ
 - **多言語・環境切替**: 実際の国際化対応や環境分離をシミュレート
 - **Canvas API**: 色調補正・画像合成に実際のピクセル操作
-- **クラウドデプロイ対応**: Docker + Google Cloud Run
+- **クラウドデプロイ対応**: Docker + Google Cloud Run + GitHub Actions
 
 mabl と LLM を組み合わせたテスト生成のデモとして、典型的な SaaS ワークフローを網羅しています。
