@@ -90,6 +90,7 @@ app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Mode: ${isProduction ? 'production' : 'development'}`);
   console.log(`Basic Auth enabled: ${!!(process.env.BASIC_AUTH_USERNAME && process.env.BASIC_AUTH_PASSWORD)}`);
+  console.log(`JWT Auth credentials: ${process.env.AUTH_USERNAME || 'demo'} / ${process.env.AUTH_PASSWORD ? '****' : 'demo123'}`);
   console.log(`OpenAI API Key configured: ${!!process.env.OPENAI_API_KEY}`);
   if (!isProduction) {
     console.log('\n💡 Development mode: Run "npm run dev" in another terminal for the frontend\n');

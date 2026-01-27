@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { type ApiServerId } from './constants/config'
+import { useAuth } from './contexts/AuthContext'
 import { Header, AuthSection, ImageEditor, Gallery, type GalleryItem } from './components'
 
 /**
@@ -10,26 +11,33 @@ import { Header, AuthSection, ImageEditor, Gallery, type GalleryItem } from './c
  */
 
 export default function App() {
-  const [env, setEnv] = useState<'staging' | 'production'>('staging')
   const [apiServerId, setApiServerId] = useState<ApiServerId>('same')
-  const [loggedIn, setLoggedIn] = useState(false)
   const [saved, setSaved] = useState<GalleryItem[]>([])
+  const { isLoggedIn, logout } = useAuth()
 
   const handleSave = (item: GalleryItem) => {
     setSaved((arr) => [item, ...arr])
   }
 
+  // ログインしていない場合はログインページを表示
+  if (!isLoggedIn) {
+    return (
+      <AuthSection
+        apiServerId={apiServerId}
+        setApiServerId={setApiServerId}
+      />
+    )
+  }
+
+  // ログイン後はメイン画面を表示
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-6">
       <div className="max-w-6xl mx-auto space-y-6">
         <Header
-          env={env}
-          setEnv={setEnv}
           apiServerId={apiServerId}
           setApiServerId={setApiServerId}
+          onLogout={logout}
         />
-
-        <AuthSection loggedIn={loggedIn} setLoggedIn={setLoggedIn} />
 
         <ImageEditor apiServerId={apiServerId} onSave={handleSave} />
 

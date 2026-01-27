@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { IMAGE_CONFIG, SLIDER_CONFIG, TIMING_CONFIG, API_SERVERS, type ApiServerId } from '../constants/config'
 import { useTranslation } from '../contexts/LanguageContext'
+import { useAuth } from '../contexts/AuthContext'
 import { generateBackgroundWithAI, mockSave } from '../services/api'
 import { bakeToCanvas, composeBackgroundWithImage, clamp } from '../utils/imageProcessor'
 import type { GalleryItem } from './Gallery'
@@ -17,6 +18,7 @@ export interface ImageEditorRef {
 export const ImageEditor = forwardRef<ImageEditorRef, ImageEditorProps>(
   function ImageEditor({ apiServerId, onSave }, ref) {
     const { t } = useTranslation()
+    const { token } = useAuth()
 
     const [file, setFile] = useState<File | null>(null)
     const [uploadError, setUploadError] = useState<string | null>(null)
@@ -92,7 +94,7 @@ export const ImageEditor = forwardRef<ImageEditorRef, ImageEditorProps>(
 
       try {
         const apiServer = API_SERVERS.find((s) => s.id === apiServerId)
-        const resp = await generateBackgroundWithAI(aiPrompt, apiServer?.url || '')
+        const resp = await generateBackgroundWithAI(aiPrompt, apiServer?.url || '', token)
 
         if (resp.ok && resp.imageUrl) {
           console.log('Composing background with original image...')
@@ -157,7 +159,7 @@ export const ImageEditor = forwardRef<ImageEditorRef, ImageEditorProps>(
 
     return (
       <section className="bg-white rounded-2xl shadow p-4 md:p-6">
-        <h2 className="text-lg font-medium mb-3">Upload</h2>
+        <h2 className="text-lg font-medium mb-3">{t.imageGenerationTitle}</h2>
         <div
           onDrop={onDrop}
           onDragOver={(e) => e.preventDefault()}

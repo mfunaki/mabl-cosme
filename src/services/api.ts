@@ -27,7 +27,8 @@ export function sleep(ms: number): Promise<void> {
  */
 export async function generateBackgroundWithAI(
   prompt: string,
-  apiBaseUrl: string
+  apiBaseUrl: string,
+  token?: string | null
 ): Promise<AIGenerationResponse> {
   try {
     console.log('Calling backend API to generate background with prompt:', prompt)
@@ -36,11 +37,18 @@ export async function generateBackgroundWithAI(
     // プロンプトに背景生成の指示を追加
     const enhancedPrompt = `Generate a background image that is: ${prompt}. The image should be suitable as a professional background. High quality, detailed.`
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+
+    // トークンがある場合はAuthorizationヘッダーを追加
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
     const response = await fetch(`${apiBaseUrl}/api/openai`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         model: 'dall-e-3',
         prompt: enhancedPrompt,

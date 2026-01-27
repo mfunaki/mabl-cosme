@@ -34,8 +34,8 @@ Node.js + Express
 ```
 
 - **静的ファイル配信**: Express (本番環境)
-- **APIプロキシ**: `/api/openai` → OpenAI API
-- **認証**: Basic認証 (オプション)
+- **APIエンドポイント**: `/api/login`, `/api/openai`
+- **認証**: JWT認証（アプリケーション認証）、Basic認証（オプション）
 
 ### 通信フロー
 
@@ -43,6 +43,18 @@ Node.js + Express
 [Browser] → [Vite Dev Server (5173)] → [Express API (3000)] → [OpenAI API]
               ↓ (本番時)
          [Express (3000)] が静的ファイル配信も兼務
+```
+
+### 認証フロー
+
+```
+1. POST /api/login (username, password)
+   ↓
+2. サーバーがJWTトークンを返却 { token: "eyJhbG..." }
+   ↓
+3. POST /api/openai (Authorization: Bearer <token>)
+   ↓
+4. OpenAI API呼び出し → 結果返却
 ```
 
 ---
@@ -76,11 +88,13 @@ src/
 │   └── __tests__/
 └── contexts/               # React Context
     ├── LanguageContext.tsx # 言語切り替えContext
+    ├── AuthContext.tsx     # 認証状態管理Context（JWTトークン）
     └── __tests__/
 
 server/
 ├── index.js                # Expressサーバーメイン
-└── proxy.js                # OpenAI APIプロキシ
+├── proxy.js                # APIルート (/api/login, /api/openai)
+└── auth.js                 # JWT認証ロジック
 ```
 
 ---
@@ -413,6 +427,15 @@ const MyComponent = () => {
 
 ## data-testid規約
 
+### 目的
+
+`data-testid`属性は、mablやPlaywrightがテスト時にUI要素を一意に検出するために使用します。
+CSSクラスやDOM構造はデザイン変更で頻繁に変わる可能性がありますが、`data-testid`はテスト専用の属性として安定したセレクターを提供します。
+
+**すべての操作可能な要素**（ボタン、入力フィールド、セレクトボックスなど）には`data-testid`属性を付与してください。
+
+### 使用ツール
+
 `data-testid`属性は**Playwright単体テスト**と**mabl E2Eテスト**の両方で使用されます。
 既存の`data-testid`を変更すると両方のテストに影響するため、変更は慎重に行ってください。
 
@@ -440,11 +463,12 @@ select-{name}     # セレクト: env-select, lang-select
 
 | カテゴリ | data-testid | 説明 |
 |----------|-------------|------|
-| 認証 | `email` | メールアドレス入力 |
+| 認証 | `username` | ユーザー名入力 |
 | 認証 | `password` | パスワード入力 |
 | 認証 | `btn-login` | ログインボタン |
 | 認証 | `btn-logout` | ログアウトボタン |
-| 認証 | `login-state` | ログイン状態表示 |
+| 認証 | `api-server-select` | APIサーバー選択（ログイン画面） |
+| 認証 | `login-error` | ログインエラー表示 |
 | 画像 | `btn-upload` | アップロードボタン |
 | 画像 | `img-preview` | プレビュー画像 |
 | 画像 | `btn-ai-generate` | AI生成ボタン |

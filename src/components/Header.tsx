@@ -3,13 +3,12 @@ import { useTranslation } from '../contexts/LanguageContext'
 import type { Locale } from '../i18n/types'
 
 interface HeaderProps {
-  env: 'staging' | 'production'
-  setEnv: (env: 'staging' | 'production') => void
   apiServerId: ApiServerId
   setApiServerId: (id: ApiServerId) => void
+  onLogout: () => void
 }
 
-export function Header({ env, setEnv, apiServerId, setApiServerId }: HeaderProps) {
+export function Header({ apiServerId, setApiServerId, onLogout }: HeaderProps) {
   const { locale, setLocale, t } = useTranslation()
 
   return (
@@ -18,24 +17,8 @@ export function Header({ env, setEnv, apiServerId, setApiServerId }: HeaderProps
         <h1 className="text-2xl md:text-3xl font-semibold" data-testid="app-title">
           {t.appTitle}
         </h1>
-        <p className="text-sm opacity-70">Mock UI for mabl E2E demo</p>
       </div>
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <label className="text-sm" htmlFor="env-select">
-            {t.env}
-          </label>
-          <select
-            id="env-select"
-            data-testid="env-select"
-            className="border rounded-xl px-3 py-2"
-            value={env}
-            onChange={(e) => setEnv(e.target.value as 'staging' | 'production')}
-          >
-            <option value="staging">staging.mabl-cosme.com</option>
-            <option value="production">app.mabl-cosme.com</option>
-          </select>
-        </div>
         <div className="flex items-center gap-2">
           <label className="text-sm" htmlFor="lang-select">
             {t.language}
@@ -72,6 +55,13 @@ export function Header({ env, setEnv, apiServerId, setApiServerId }: HeaderProps
             ))}
           </select>
         </div>
+        <button
+          data-testid="btn-logout"
+          onClick={onLogout}
+          className="rounded-xl px-4 py-2 border bg-white hover:bg-slate-50"
+        >
+          {t.logout}
+        </button>
       </div>
     </header>
   )

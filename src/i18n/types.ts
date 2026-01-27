@@ -6,11 +6,16 @@ export type Locale = typeof LOCALES[number]
 /** 翻訳キー */
 export type TranslationKey =
   | 'appTitle'
-  | 'env'
   | 'login'
   | 'logout'
   | 'email'
   | 'password'
+  | 'username'
+  | 'usernamePlaceholder'
+  | 'loginDescription'
+  | 'loginErrorEmpty'
+  | 'loginErrorInvalid'
+  | 'imageGenerationTitle'
   | 'upload'
   | 'orDrop'
   | 'aiGenerate'
