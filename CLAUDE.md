@@ -99,11 +99,37 @@ POST /api/openai
 
 ### 主要なdata-testid
 
-- 認証: `username`, `password`, `btn-login`, `api-server-select`
-- 画像操作: `btn-upload`, `img-preview`, `btn-ai-generate`, `ai-prompt`
-- 色調補正: `slider-temp`, `slider-sat`, `btn-apply`
-- 保存: `btn-save`, `btn-download`, `api-payload`
-- ギャラリー: `gallery-id-{id}`
+| data-testid | 要素 | 説明 |
+|-------------|------|------|
+| `app-title` | h1 | アプリタイトル |
+| `env-select` | select | 環境選択（staging/production） |
+| `lang-select` | select | 言語選択（ja/en/zh） |
+| `api-server-select` | select | APIサーバー選択 |
+| `email` | input | メールアドレス入力 |
+| `password` | input | パスワード入力 |
+| `btn-login` | button | ログインボタン |
+| `btn-logout` | button | ログアウトボタン |
+| `login-state` | span | ログイン状態表示 |
+| `btn-upload` | button | 画像アップロード |
+| `img-preview` | img | プレビュー画像 |
+| `ai-prompt` | input | AIプロンプト入力 |
+| `btn-ai-generate` | button | AI背景生成 |
+| `slider-temp` | input | 色温度スライダー |
+| `slider-sat` | input | 彩度スライダー |
+| `btn-apply` | button | 補正適用 |
+| `btn-save` | button | ギャラリー保存 |
+| `btn-download` | button | ダウンロード |
+| `api-payload` | pre | APIペイロード表示 |
+| `gallery-id-{id}` | img | ギャラリー画像 |
+
+### ポート構成
+
+| サービス | ポート | 用途 |
+|---------|--------|------|
+| Vite dev server | 5173 | フロントエンド開発 |
+| Express server | 3000 | API / 本番静的配信 |
+| Docker Compose | 8080 | ローカルDocker |
+| Cloud Run | 443 | 本番環境 |
 
 ## 開発ノート
 
@@ -112,9 +138,41 @@ POST /api/openai
 - モック関数（`mockSave`等）は実際のAPI呼び出しをシミュレート
 - 画像処理はCanvas APIで実装（`bakeToCanvas`, `composeBackgroundWithImage`）
 
+## トラブルシューティング
+
+| 問題 | 原因 | 解決策 |
+|------|------|--------|
+| AI生成が動作しない | APIキー未設定 | `.env` に `OPENAI_API_KEY` を設定 |
+| ポート競合 | 既存プロセス | `lsof -i :3000` で確認・終了 |
+| Dockerビルド失敗 | キャッシュ問題 | `docker compose build --no-cache` |
+| CORSエラー | APIプロキシ未経由 | Vite dev server経由でアクセス |
+| Basic認証が効かない | 片方のみ設定 | USERNAME と PASSWORD 両方設定 |
+
+```bash
+# TypeScript エラーチェック
+npx tsc --noEmit
+
+# ポート 3000/5173 使用プロセス確認
+lsof -i :3000 -i :5173
+
+# Expressサーバーログ（開発時）
+npm run dev:server 2>&1 | tee server.log
+
+# Docker ログ
+docker compose logs -f app
+
+# Cloud Run ログ（要 gcloud CLI）
+gcloud run services logs read mabl-cosme --region=asia-northeast1
+```
+
 ## GitHub Actions / CI環境での設定
 
 `.github/workflows/deploy.yml`でCloud Runへの自動デプロイを実行。
+
+- **トリガー**: `main` ブランチへの push
+- **リージョン**: `asia-northeast1`
+- **リソース**: 512Mi メモリ / 1 CPU
+
 
 以下のシークレットをGitHub Secretsに設定:
 
