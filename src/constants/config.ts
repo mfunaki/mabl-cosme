@@ -59,7 +59,7 @@ export const TIMING_CONFIG = {
 /** APIサーバー設定 */
 export const API_SERVERS = [
   { id: 'same', url: '', label: 'sameHost' },
-  { id: 'cloud', url: 'https://mabl-cosme-api-ixi7x7b23a-an.a.run.app', label: 'cloudServer' },
+  { id: 'cloud', url: 'https://mabl-cosme-api.mayoct.net', label: 'cloudServer' },
 ] as const
 
 export type ApiServerId = typeof API_SERVERS[number]['id']
