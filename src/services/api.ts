@@ -1,5 +1,7 @@
 import { IMAGE_CONFIG, TIMING_CONFIG } from '../constants/config'
 
+const AI_GENERATION_TIMEOUT_MS = 125000
+
 /** API応答の型 */
 export interface AIGenerationResponse {
   status: number
@@ -30,6 +32,9 @@ export async function generateBackgroundWithAI(
   apiBaseUrl: string,
   token?: string | null
 ): Promise<AIGenerationResponse> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), AI_GENERATION_TIMEOUT_MS)
+
   try {
     console.log('Calling backend API to generate background with prompt:', prompt)
     console.log('API Base URL:', apiBaseUrl || '(same host)')
@@ -49,6 +54,7 @@ export async function generateBackgroundWithAI(
     const response = await fetch(`${apiBaseUrl}/api/openai`, {
       method: 'POST',
       headers,
+      signal: controller.signal,
       body: JSON.stringify({
         model: 'gpt-image-2',
         prompt: enhancedPrompt,
@@ -85,6 +91,14 @@ export async function generateBackgroundWithAI(
 
     return { status: 500, ok: false, error: 'No image generated' }
   } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        status: 504,
+        ok: false,
+        error: 'Image generation timed out. Please try again.',
+      }
+    }
+
     const errorMessage = error instanceof Error ? error.message : 'API Error'
     console.error('Backend API Error:', error)
     return {
@@ -92,6 +106,8 @@ export async function generateBackgroundWithAI(
       ok: false,
       error: errorMessage,
     }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 

@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import { authenticateUser, verifyToken } from './auth.js';
 
 const router = express.Router();
+const OPENAI_TIMEOUT_MS = 120000;
 
 /**
  * ログインエンドポイント
@@ -34,6 +35,9 @@ router.post('/login', (req, res) => {
  * Headers: Authorization: Bearer <token>
  */
 router.post('/openai', verifyToken, async (req, res) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+
   try {
     const apiKey = process.env.OPENAI_API_KEY;
 
@@ -49,7 +53,8 @@ router.post('/openai', verifyToken, async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify(req.body),
+      signal: controller.signal
     });
 
     const data = await response.json();
@@ -61,8 +66,20 @@ router.post('/openai', verifyToken, async (req, res) => {
 
     res.json(data);
   } catch (error) {
+    if (error?.name === 'AbortError') {
+      console.error('OpenAI API timeout');
+      return res.status(504).json({
+        error: {
+          message: 'Image generation timed out. Please try again.',
+          type: 'timeout_error',
+        }
+      });
+    }
+
     console.error('OpenAI API Error:', error);
     res.status(500).json({ error: 'Failed to communicate with OpenAI' });
+  } finally {
+    clearTimeout(timeoutId);
   }
 });
 

@@ -1,0 +1,20 @@
+{
+    "name": "mabl-cosme-dev",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "remoteUser": "node",
+    "containerEnv": {
+        "NVM_DIR": "/usr/local/share/nvm"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "anthropic.claude-code",
+                "github.vscode-github-actions"
+            ]
+        }
+    },
+    "postCreateCommand": "bash -lc 'source /usr/local/share/nvm/nvm.sh && nvm install --lts && nvm alias default lts/* && nvm use default && uv python install 3.12 && uv python pin 3.12 && npm ci'"
+}
