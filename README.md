@@ -109,7 +109,7 @@ const response = await fetch('/api/openai', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ 
-    model: "dall-e-3",
+    model: "gpt-image-2",
     prompt: "your prompt",
     size: "1024x1024"
   })
@@ -284,7 +284,7 @@ Azure App Service等にデプロイする場合:
 
 - **フロントエンド**: React + TypeScript + Vite
 - **バックエンド**: Node.js + Express
-- **AI**: OpenAI DALL-E 3
+- **AI**: OpenAI GPT Image
 - **コンテナ**: Docker + Docker Compose
 
 ## ライセンス

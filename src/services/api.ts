@@ -23,7 +23,7 @@ export function sleep(ms: number): Promise<void> {
 }
 
 /**
- * OpenAI DALL-E 3 APIを使用して背景画像を生成
+ * OpenAI GPT Image APIを使用して背景画像を生成
  */
 export async function generateBackgroundWithAI(
   prompt: string,
@@ -50,11 +50,11 @@ export async function generateBackgroundWithAI(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: 'dall-e-3',
+        model: 'gpt-image-2',
         prompt: enhancedPrompt,
         n: 1,
         size: `${IMAGE_CONFIG.canvas.width}x${IMAGE_CONFIG.canvas.height}`,
-        response_format: 'b64_json',
+        output_format: 'png',
       }),
     })
 
